@@ -141,8 +141,8 @@ CONTACTS = """{% extends 'base' %}{% block body %}
 <p class="mut">Paste anything: CSV, a list, text with emails. Optional: one line per contact as <code>email, name, role</code>.</p>
 <textarea name="text"></textarea><div class="row" style="margin-top:8px"><input name="role" placeholder="default role (artist / a&r / manager / producer)"><button>Import</button></div></form>
 <h2>List</h2>
-<table><tr><th>Email</th><th>Name</th><th>Role</th><th>Status</th><th>Sent</th><th>Opened</th><th>Replied</th><th>Source</th></tr>
-{% for c in rows %}<tr><td>{{c.email}}</td><td>{{c.name or ''}}</td><td>{{c.role or ''}}</td><td><span class="pill {{'ok' if c.status=='valid' else 'bad' if c.status in ('invalid','bounced') else ''}}">{{c.status}}</span></td>
+<table><tr><th>Email</th><th>Name</th><th>Role</th><th>Genres</th><th>Status</th><th>Sent</th><th>Opened</th><th>Replied</th><th>Source</th></tr>
+{% for c in rows %}<tr><td>{{c.email}}</td><td>{{c.name or ''}}</td><td>{{c.role or ''}}</td><td class="mut">{{(c.tags or [])|join(', ')}}</td><td><span class="pill {{'ok' if c.status=='valid' else 'bad' if c.status in ('invalid','bounced') else ''}}">{{c.status}}</span></td>
 <td>{{c.sent_count or 0}}</td><td>{{c.opened_count or 0}}</td><td>{{'yes' if c.replied else ''}}</td><td class="mut">{{c.source or ''}}</td></tr>{% endfor %}</table>
 {% endblock %}"""
 
