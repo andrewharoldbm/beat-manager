@@ -70,6 +70,30 @@ services:
       db:
         condition: service_healthy
 
+  maint:
+    build: .
+    restart: always
+    command: python -m app.maint.worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://beats:${DB_PASSWORD}@db:5432/beats
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backup:
+    image: postgres:16-alpine
+    restart: always
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    environment:
+      PGPASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./deploy/backup.sh:/backup.sh:ro
+      - ./data/backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
   web:
     build: .
     restart: always

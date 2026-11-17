@@ -66,6 +66,22 @@ def measure(name, rel, mon):
     }
 
 
+def title_tags(conn, artist, videos):
+    from collections import Counter
+    from app.common.genres import map_text
+    nm = norm_key(artist["name"])
+    titles = {v["t"] for v in videos if nm in norm_key(v["t"])}
+    if len(titles) < 3:
+        return
+    cnt = Counter(g for t in titles for g in set(map_text(t)))
+    for g, n in cnt.items():
+        w = n / len(titles)
+        if w >= 0.1:
+            conn.execute("""INSERT INTO artist_tags(artist_id, tag, weight, source) VALUES (%s,%s,%s,'yt_title')
+                            ON CONFLICT (artist_id, tag, source) DO UPDATE SET weight=EXCLUDED.weight, updated=now()""",
+                         (artist["id"], g, round(w, 3)))
+
+
 def seed(conn):
     for prio, names in SEEDS.items():
         for n in names:
@@ -115,6 +131,10 @@ def run():
                         VALUES (%(id)s,%(rel_n)s,%(sup7)s,%(sup30)s,%(vpd_med)s,%(vpd_top)s,%(med_month)s,%(top5_avg)s)""",
                      {"id": a["id"], **m})
         conn.execute("UPDATE artists SET last_scanned=now() WHERE id=%s", (a["id"],))
+        try:
+            title_tags(conn, a, rel + mon)
+        except Exception:
+            pass
         for v in rel + mon:
             names = extract_names(v["t"])
             for nm in names:
