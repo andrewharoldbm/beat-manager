@@ -134,6 +134,54 @@ def check_tests(conn):
         notify(f"Autopilot applied: {p['text']}")
 
 
+def best_candidates(conn, genre, exclude, n=3):
+    return conn.execute("""
+        SELECT a.name, m.vpd_med, m.sup30 FROM artists a
+        JOIN LATERAL (SELECT * FROM yt_metrics y WHERE y.artist_id=a.id ORDER BY measured DESC LIMIT 1) m ON true
+        WHERE m.rel_n >= 8 AND m.sup30 <= 8 AND m.vpd_med >= 30 AND NOT (lower(a.name) = ANY(%s))
+          AND EXISTS (SELECT 1 FROM artist_tags t WHERE t.artist_id=a.id AND t.tag=%s AND t.weight >= 0.4)
+        ORDER BY m.vpd_med / (m.sup30 + 2) DESC LIMIT %s""", ([e.lower() for e in exclude], genre, n)).fetchall()
+
+
+def check_niches(conn):
+    """If the niche (B) artist of a main formula gets saturated or loses demand, propose a replacement."""
+    import json as _json
+    from app.pipeline import meta
+    from app.common import settings as S
+    f = meta.load_formulas(conn)
+    used = {a for cfg in f.values() for a in cfg["main"]} | {a for cfg in f.values() for t in cfg.get("tests", []) for a in t}
+    for g, cfg in f.items():
+        if len(cfg["main"]) < 2:
+            continue
+        b = cfg["main"][1]
+        hist = conn.execute("""SELECT y.sup30, y.vpd_med, y.measured FROM yt_metrics y JOIN artists a ON a.id=y.artist_id
+                               WHERE lower(a.name)=lower(%s) ORDER BY y.measured DESC""", (b,)).fetchall()
+        if not hist:
+            continue
+        now_m = hist[0]
+        old = next((h for h in hist if h["measured"] < now_m["measured"] - dt.timedelta(days=21)), None)
+        reason = None
+        if now_m["sup30"] >= 15:
+            reason = f"{b} now has {now_m['sup30']}+ type beats per month (too much competition)"
+        elif old and old["vpd_med"] and now_m["vpd_med"] < old["vpd_med"] * 0.7:
+            reason = f"demand for {b} dropped from {old['vpd_med']:.0f} to {now_m['vpd_med']:.0f} views/day"
+        if not reason or conn.execute("SELECT 1 FROM proposals WHERE status='open' AND genre=%s", (g,)).fetchone():
+            continue
+        cands = best_candidates(conn, g, list(used))
+        if not cands:
+            continue
+        c0 = cands[0]
+        new_main = [cfg["main"][0], c0["name"]] + cfg["main"][2:]
+        text = (f"[{g}] {reason}. Suggest replacing {b} with {c0['name']} "
+                f"({c0['vpd_med']:.0f} views/day, {c0['sup30']} uploads/30d). New main: {' x '.join(new_main)}")
+        row = conn.execute("INSERT INTO proposals(kind, genre, payload, text) VALUES ('promote_test',%s,%s::jsonb,%s) RETURNING id",
+                           (g, _json.dumps({"new_main": new_main}), text)).fetchone()
+        hrs = int(S.get(conn, "autopilot_hours"))
+        notify(text + f"\nIf you don't answer in {hrs}h, autopilot applies it.",
+               [[{"text": "Approve", "callback_data": f"prop:{row['id']}:yes"},
+                 {"text": "Reject", "callback_data": f"prop:{row['id']}:no"}]])
+
+
 def weekly_report(conn):
     a = conn.execute("""SELECT count(*) n, count(*) FILTER (WHERE first_seen > now()-interval '7 days') new,
                         count(last_scanned) s FROM artists""").fetchone()
@@ -187,6 +235,7 @@ def run():
             if not last_stats or now - last_stats > dt.timedelta(hours=6):
                 video_stats(conn)
                 check_tests(conn)
+                check_niches(conn)
                 last_stats = now
             if not last_sec or now - last_sec > dt.timedelta(minutes=55):
                 security_checks(conn)
