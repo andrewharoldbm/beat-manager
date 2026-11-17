@@ -99,6 +99,23 @@ def resend_targets(conn, limit):
         ORDER BY l.pack_id, c.id LIMIT %s""", (RESEND_MIN_DAYS, limit)).fetchall()
 
 
+def daily_limit(conn):
+    """Warm-up: start at 30/day on the first sending day, +15 per day, up to the target.
+    Target 360/day reaches ~2500 contacts per week."""
+    target = int(S.get(conn, "email_daily_limit"))
+    first = conn.execute("SELECT min(sent_at) t FROM email_log").fetchone()["t"]
+    if not first:
+        return min(target, 30)
+    days = (dt.datetime.now(dt.timezone.utc) - first).days
+    # slow down if many bounces lately
+    b = conn.execute("""SELECT count(*) FILTER (WHERE c.status='bounced') bad, count(*) n FROM email_log l
+                        JOIN contacts c ON c.id=l.contact_id WHERE l.sent_at > now()-interval '3 days'""").fetchone()
+    lim = min(target, 30 + 15 * days)
+    if b["n"] >= 50 and b["bad"] / b["n"] > 0.05:
+        lim = max(20, lim // 2)
+    return lim
+
+
 def send_due(conn, svc):
     now = dt.datetime.now(dt.timezone.utc)
     if now.weekday() == int(S.get(conn, "email_weekday")):
@@ -112,7 +129,8 @@ def send_due(conn, svc):
                 log_event(conn, "info", "email", "no new beats")
                 notify("No new beats left for email packs. Re-sending older packs to people who didn't open them. Send more beats when you can.")
     sent_today = conn.execute("SELECT count(*) n FROM email_log WHERE sent_at > now()-interval '24 hours'").fetchone()["n"]
-    budget = min(int(S.get(conn, "email_daily_limit")) - sent_today, 5)
+    limit = daily_limit(conn)
+    budget = min(limit - sent_today, max(2, -(-limit // 80)))  # spread over the day (runs every 15 min)
     if budget <= 0:
         return
     jobs = []  # (contact, pack_id, kind)

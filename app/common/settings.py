@@ -14,7 +14,7 @@ DEFAULTS = {
     "email_enabled": False,
     "email_pack_size": 5,
     "email_weekday": 1,          # Tuesday (0=Mon)
-    "email_daily_limit": 40,
+    "email_daily_limit": 360,   # target after warm-up (~2500/week)
     "autopilot_hours": 72,
     "artist_bpm": None,
     # drafts - to be reviewed with the owner before emails are switched on

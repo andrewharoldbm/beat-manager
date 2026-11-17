@@ -162,7 +162,7 @@ SETTINGS = """{% extends 'base' %}{% block body %}
 <label>[FREE] in titles <select name="free_tag">{% for v in ['test','on','off'] %}<option {{'selected' if s.free_tag==v}}>{{v}}</option>{% endfor %}</select></label>
 <label><input type="checkbox" name="email_enabled" {{'checked' if s.email_enabled}}> Weekly email packs ON</label>
 <label>Beats per email pack <input name="email_pack_size" value="{{s.email_pack_size}}" size=3></label>
-<label>Max emails per day <input name="email_daily_limit" value="{{s.email_daily_limit}}" size=4></label>
+<label>Emails per day target (starts at 30, +15/day warm-up) <input name="email_daily_limit" value="{{s.email_daily_limit}}" size=4></label>
 <label>Email subjects (one per line, picked at random)<textarea name="email_subjects" style="min-height:90px">{{subj}}</textarea></label>
 <label>Email text<textarea name="email_body" style="min-height:60px">{{body}}</textarea></label>
 <label>Signature + disclaimer<textarea name="email_signature" style="min-height:110px">{{sig}}</textarea></label>
