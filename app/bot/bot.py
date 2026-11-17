@@ -61,11 +61,23 @@ def status(conn):
     m = conn.execute("SELECT count(*) n FROM yt_metrics WHERE measured > now()-interval '24 hours'").fetchone()
     b = conn.execute("SELECT count(*) n FROM beats").fetchone()
     k = conn.execute("SELECT value FROM settings WHERE key='killed'").fetchone()["value"]
+    e = conn.execute("""SELECT
+        count(*) FILTER (WHERE category='artist') art, count(*) FILTER (WHERE category='artist' AND status='valid') art_ok,
+        count(*) FILTER (WHERE category='artist' AND added > now()-interval '24 hours') art_new,
+        count(*) FILTER (WHERE category='producer') prod, count(*) FILTER (WHERE category='producer' AND status='valid') prod_ok,
+        count(*) FILTER (WHERE category='producer' AND added > now()-interval '24 hours') prod_new,
+        count(*) FILTER (WHERE coalesce(category,'own')='own') own FROM contacts""").fetchone()
+    pr = conn.execute("SELECT count(*) n, count(email_checked) c FROM producers").fetchone()
+    ac = conn.execute("SELECT count(email_checked) n FROM artists").fetchone()["n"]
     return (f"Beat Manager status\n"
             f"State: {'STOPPED (kill)' if k is True else 'running'}\n"
             f"Artists in DB: {a['n']} (scanned: {a['s']})\n"
             f"Measurements last 24h: {m['n']}\n"
-            f"Beats: {b['n']}")
+            f"Beats: {b['n']}\n\n"
+            f"Artist emails: {e['art']} ({e['art_ok']} verified, +{e['art_new']} last 24h), artists checked: {ac}\n"
+            f"Producer emails: {e['prod']} ({e['prod_ok']} verified, +{e['prod_new']} last 24h)\n"
+            f"Producers found via Genius: {pr['n']} (searched for email: {pr['c']})\n"
+            f"My uploaded list: {e['own']}")
 
 
 def handle_audio(conn, msg):
