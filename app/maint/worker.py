@@ -234,10 +234,22 @@ def weekly_report(conn):
     em = conn.execute("""SELECT count(*) n, count(*) FILTER (WHERE status LIKE 'opened%%') o FROM email_log
                          WHERE sent_at > now()-interval '7 days'""").fetchone()
     rep = conn.execute("SELECT count(*) n FROM contacts WHERE replied").fetchone()["n"]
+    bl = conn.execute("""SELECT
+        count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM uploads u WHERE u.beat_id=b.id AND u.status='uploaded')) yt_left,
+        count(*) FILTER (WHERE b.id NOT IN (SELECT unnest(beat_ids) FROM email_packs WHERE beat_ids IS NOT NULL)) mail_left,
+        count(*) FILTER (WHERE b.status='error' OR b.needs_review) problems
+        FROM beats b""").fetchone()
+    weak = conn.execute("""SELECT p.id, count(l.*) n, count(*) FILTER (WHERE l.status LIKE 'opened%%') o
+        FROM email_packs p JOIN email_log l ON l.pack_id=p.id AND l.kind='first'
+        GROUP BY p.id HAVING count(l.*) >= 5 ORDER BY p.id DESC LIMIT 6""").fetchall()
     lines = ["Weekly report", "",
              f"Artists in DB: {a['n']} (+{a['new']} this week), measured: {a['s']}",
              f"Uploads this week: {up}, in calendar: {q}",
-             f"Emails sent this week: {em['n']}, opened: {em['o']}, contacts who replied (total): {rep}", "",
+             f"Emails sent this week: {em['n']}, opened: {em['o']}, contacts who replied (total): {rep}",
+             f"Beats not on YouTube yet: {bl['yt_left']}, not in any email pack yet: {bl['mail_left']}, need attention: {bl['problems']}"]
+    if weak:
+        lines += ["Recent packs (opened/sent): " + ", ".join(f"#{r['id']} {r['o']}/{r['n']}" for r in weak)]
+    lines += ["",
              "Top Detroit/Flint niche opportunities (views/day, uploads last 30d):"]
     lines += [f"- {r['name']}: {r['vpd_med']:.0f}/day, {r['sup30']} uploads" for r in top] or ["- not enough data yet"]
     perf = formula_performance(conn)

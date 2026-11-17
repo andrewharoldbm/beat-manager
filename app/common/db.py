@@ -57,6 +57,8 @@ MIGRATIONS = [
     "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS sent_count INTEGER DEFAULT 0",
     "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}'",
     "CREATE TABLE IF NOT EXISTS email_log (id BIGSERIAL PRIMARY KEY, contact_id INTEGER REFERENCES contacts(id), pack_id INTEGER, sent_at TIMESTAMPTZ DEFAULT now(), gmail_id TEXT, thread_id TEXT, status TEXT DEFAULT 'sent')",
+    "ALTER TABLE email_packs ADD COLUMN IF NOT EXISTS resent_at TIMESTAMPTZ",
+    "ALTER TABLE email_log ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'first'",
 ]
 
 

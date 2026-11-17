@@ -89,25 +89,62 @@ def compose(files, contact, track_token):
     return text, html
 
 
+RESEND_MIN_DAYS = 14
+RESEND_MAX_OPEN = 0.25
+
+
+def pick_resend(conn):
+    """When no fresh beats are left: re-send the weakest old pack to people who never opened it."""
+    return conn.execute("""
+        SELECT p.id, count(l.*) sent,
+               count(*) FILTER (WHERE l.status LIKE 'opened%%' OR c.replied) opened
+        FROM email_packs p JOIN email_log l ON l.pack_id=p.id AND l.kind='first'
+        JOIN contacts c ON c.id=l.contact_id
+        WHERE p.sent_at < now() - make_interval(days => %s) AND p.resent_at IS NULL
+        GROUP BY p.id HAVING count(l.*) >= 5
+           AND count(*) FILTER (WHERE l.status LIKE 'opened%%' OR c.replied)::float / count(l.*) < %s
+        ORDER BY 3::float / 2 LIMIT 1""", (RESEND_MIN_DAYS, RESEND_MAX_OPEN)).fetchone()
+
+
 def send_due(conn, svc):
-    if dt.datetime.now(dt.timezone.utc).weekday() == int(S.get(conn, "email_weekday")):
-        last = conn.execute("SELECT max(sent_at) t FROM email_packs WHERE sent_at IS NOT NULL").fetchone()["t"]
-        if not last or last < dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=6):
+    now = dt.datetime.now(dt.timezone.utc)
+    if now.weekday() == int(S.get(conn, "email_weekday")):
+        last = conn.execute("SELECT max(greatest(sent_at, resent_at)) t FROM email_packs").fetchone()["t"]
+        if not last or last < now - dt.timedelta(days=6):
             pid = build_pack(conn, int(S.get(conn, "email_pack_size")))
             if pid:
                 conn.execute("UPDATE email_packs SET sent_at=now() WHERE id=%s", (pid,))
                 notify(f"New email pack #{pid} created; sending to contacts over the next days.")
-    pack = conn.execute("SELECT id FROM email_packs WHERE sent_at IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
+            else:
+                r = pick_resend(conn)
+                if r:
+                    conn.execute("UPDATE email_packs SET resent_at=now() WHERE id=%s", (r["id"],))
+                    notify(f"No new beats left for packs. Re-sending weak pack #{r['id']} "
+                           f"({r['opened']}/{r['sent']} opened) to people who didn't open it.")
+                else:
+                    notify("No new beats left for email packs and nothing worth re-sending. Send more beats.")
+    pack = conn.execute("""SELECT id, resent_at IS NOT NULL AND resent_at >= sent_at AS resend FROM email_packs
+                           WHERE sent_at IS NOT NULL ORDER BY greatest(sent_at, resent_at) DESC LIMIT 1""").fetchone()
     if not pack:
         return
     sent_today = conn.execute("SELECT count(*) n FROM email_log WHERE sent_at > now()-interval '24 hours'").fetchone()["n"]
     budget = int(S.get(conn, "email_daily_limit")) - sent_today
     if budget <= 0:
         return
-    targets = conn.execute("""SELECT * FROM contacts WHERE status='valid' AND NOT unsubscribed
-                              AND id NOT IN (SELECT contact_id FROM email_log WHERE pack_id=%s)
-                              AND (last_sent IS NULL OR last_sent < now()-interval '6 days')
-                              ORDER BY replied DESC, opened_count DESC, id LIMIT %s""", (pack["id"], min(budget, 5))).fetchall()
+    if pack["resend"]:
+        targets = conn.execute("""SELECT c.* FROM contacts c JOIN email_log l ON l.contact_id=c.id AND l.pack_id=%s
+                                  WHERE c.status='valid' AND NOT c.unsubscribed AND NOT c.replied
+                                  AND l.kind='first' AND l.status NOT LIKE 'opened%%'
+                                  AND c.id NOT IN (SELECT contact_id FROM email_log WHERE pack_id=%s AND kind='resend')
+                                  AND (c.last_sent IS NULL OR c.last_sent < now()-interval '6 days')
+                                  ORDER BY c.id LIMIT %s""", (pack["id"], pack["id"], min(budget, 5))).fetchall()
+        kind, subject = "resend", "beats you might've missed"
+    else:
+        targets = conn.execute("""SELECT * FROM contacts WHERE status='valid' AND NOT unsubscribed
+                                  AND id NOT IN (SELECT contact_id FROM email_log WHERE pack_id=%s)
+                                  AND (last_sent IS NULL OR last_sent < now()-interval '6 days')
+                                  ORDER BY replied DESC, opened_count DESC, id LIMIT %s""", (pack["id"], min(budget, 5))).fetchall()
+        kind, subject = "first", "new beats for you"
     if not targets:
         return
     files = pack_files(conn, pack["id"])
@@ -115,9 +152,9 @@ def send_due(conn, svc):
         tok = secrets.token_urlsafe(12)
         text, html = compose(files, c, tok)
         try:
-            r = gmail.send(svc, c["email"], "new beats for you", text, html, [(f, n) for _, f, n in files])
-            conn.execute("INSERT INTO email_log(contact_id, pack_id, gmail_id, thread_id, status) VALUES (%s,%s,%s,%s,%s)",
-                         (c["id"], pack["id"], r.get("id"), r.get("threadId"), "sent:" + tok))
+            r = gmail.send(svc, c["email"], subject, text, html, [(f, n) for _, f, n in files])
+            conn.execute("INSERT INTO email_log(contact_id, pack_id, gmail_id, thread_id, status, kind) VALUES (%s,%s,%s,%s,%s,%s)",
+                         (c["id"], pack["id"], r.get("id"), r.get("threadId"), "sent:" + tok, kind))
             conn.execute("UPDATE contacts SET last_sent=now(), sent_count=sent_count+1 WHERE id=%s", (c["id"],))
         except Exception as e:
             log_event(conn, "warn", "email", f"send to {c['email']} failed: {e}")
