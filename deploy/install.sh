@@ -29,7 +29,7 @@ echo "############ COPY THIS LINE AND SEND IT TO CLAUDE ############"
 cat /root/.ssh/bm_deploy.pub
 echo "##############################################################"
 echo
-read -rp "Press ENTER after Claude confirms the key was added... " _
+read -rp "Press ENTER after Claude confirms the key was added... " _ < /dev/tty
 
 echo "== 4/6 Fetch code =="
 if [ -d "$DIR/.git" ]; then git -C "$DIR" pull; else git clone "$REPO" "$DIR"; fi
