@@ -120,9 +120,9 @@ def audience_sql(conn, alias=""):
     a = alias + "." if alias else ""
     parts = []
     if S.get(conn, "email_send_own"):
-        parts.append(f"coalesce({a}source,'') NOT LIKE 'yt:%%'")
+        parts.append(f"coalesce({a}category,'own') = 'own'")
     if S.get(conn, "email_send_found"):
-        parts.append(f"{a}source LIKE 'yt:%%'")
+        parts.append(f"{a}category = 'artist'")
     return "(" + (" OR ".join(parts) or "false") + ")"
 
 

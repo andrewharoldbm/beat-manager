@@ -137,7 +137,9 @@ CONTACTS = """{% extends 'base' %}{% block body %}
 <h1>Contacts</h1>
 <div class="row" style="gap:8px;margin-bottom:12px">
 <a class="pill {{'ok' if grp=='own'}}" href="/contacts?list=own">My list ({{counts.own}}) {{'· sending' if send_own else '· not sending'}}</a>
-<a class="pill {{'ok' if grp=='found'}}" href="/contacts?list=found">Found by system ({{counts.found}}) {{'· sending' if send_found else '· not sending'}}</a></div>
+<a class="pill {{'ok' if grp=='found'}}" href="/contacts?list=found">Artists found ({{counts.found}}) {{'· sending' if send_found else '· not sending'}}</a>
+<a class="pill {{'ok' if grp=='producers'}}" href="/contacts?list=producers">Producers ({{counts.producers}}) · for loops, never get beat packs</a></div>
+{% if grp=='producers' %}<p class="mut">Producers found from Genius credits of our artists: {{pstat.n}} producers, {{pstat.checked}} searched for email, {{pstat.found}} with email.</p>{% endif %}
 {% if grp=='found' %}<p class="mut">Public business emails found in artists' own YouTube descriptions. Only verified (valid) ones are ever emailed, and only when "Send to found contacts" is ON in Settings.</p>{% endif %}
 <div class="grid">{% for s,n in stats %}<div class="card"><div class="mut">{{s}}</div><div class="big">{{n}}</div></div>{% endfor %}</div>
 <h2>Import</h2>
@@ -145,8 +147,8 @@ CONTACTS = """{% extends 'base' %}{% block body %}
 <p class="mut">Paste anything: CSV, a list, text with emails. Optional: one line per contact as <code>email, name, role</code>.</p>
 <textarea name="text"></textarea><div class="row" style="margin-top:8px"><input name="role" placeholder="default role (artist / a&r / manager / producer)"><button>Import</button></div></form>
 <h2>List</h2>
-<table><tr><th>Email</th><th>Name</th><th>Role</th><th>Genres</th><th>Status</th><th>Sent</th><th>Opened</th><th>Replied</th><th>Source</th></tr>
-{% for c in rows %}<tr><td>{{c.email}}</td><td>{{c.name or ''}}</td><td>{{c.role or ''}}</td><td class="mut">{{(c.tags or [])|join(', ')}}</td><td><span class="pill {{'ok' if c.status=='valid' else 'bad' if c.status in ('invalid','bounced') else ''}}">{{c.status}}</span></td>
+<table><tr><th>Email</th><th>Name</th><th>Role</th><th>Genres</th>{% if grp=='producers' %}<th>Worked with</th><th>Found via</th><th>Socials</th>{% endif %}<th>Status</th><th>Sent</th><th>Opened</th><th>Replied</th><th>Source</th></tr>
+{% for c in rows %}<tr><td>{{c.email}}</td><td>{{c.name or ''}}</td><td>{{c.role or ''}}</td><td class="mut">{{(c.tags or [])|join(', ')}}</td>{% if grp=='producers' %}<td>{{(c.worked_with or [])|join(', ')}}</td><td class="mut">{{c.found_via or ''}}</td><td class="mut">{{c.notes or ''}}</td>{% endif %}<td><span class="pill {{'ok' if c.status=='valid' else 'bad' if c.status in ('invalid','bounced') else ''}}">{{c.status}}</span></td>
 <td>{{c.sent_count or 0}}</td><td>{{c.opened_count or 0}}</td><td>{{'yes' if c.replied else ''}}</td><td class="mut">{{c.source or ''}}</td></tr>{% endfor %}</table>
 {% endblock %}"""
 

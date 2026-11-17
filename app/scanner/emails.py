@@ -27,8 +27,8 @@ def find_for_artist(conn, artist):
         time.sleep(random.uniform(2, 4))
     n = 0
     for e, vid in found:
-        r = conn.execute("""INSERT INTO contacts(email, name, role, artist_id, source, tags)
-                            VALUES (%s,%s,'artist',%s,%s,%s) ON CONFLICT (email) DO NOTHING RETURNING id""",
+        r = conn.execute("""INSERT INTO contacts(email, name, role, category, artist_id, source, tags)
+                            VALUES (%s,%s,'artist','artist',%s,%s,%s) ON CONFLICT (email) DO NOTHING RETURNING id""",
                          (e, artist["name"], artist["id"], f"yt:{vid}", artist_tags(conn, artist["id"]))).fetchone()
         n += bool(r)
     conn.execute("UPDATE artists SET email_checked=now() WHERE id=%s", (artist["id"],))

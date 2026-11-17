@@ -20,7 +20,7 @@ def import_text(conn, text: str, default_role=None, source="own_list") -> int:
         name = next((p for p in rest if p.lower() not in ROLES), None)
         for e in emails:
             e = e.strip(".").lower()
-            r = conn.execute("""INSERT INTO contacts(email, name, role, source) VALUES (%s,%s,%s,%s)
+            r = conn.execute("""INSERT INTO contacts(email, name, role, source, category) VALUES (%s,%s,%s,%s,'own')
                                 ON CONFLICT (email) DO NOTHING RETURNING id""", (e, name, role, source)).fetchone()
             n += 1 if r else 0
     return n

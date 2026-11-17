@@ -62,6 +62,14 @@ MIGRATIONS = [
     "ALTER TABLE beats ADD COLUMN IF NOT EXISTS tg_msg_ids BIGINT[] DEFAULT '{}'",
     "ALTER TABLE email_log ADD COLUMN IF NOT EXISTS subject TEXT",
     "ALTER TABLE artists ADD COLUMN IF NOT EXISTS email_checked TIMESTAMPTZ",
+    "ALTER TABLE artists ADD COLUMN IF NOT EXISTS producers_checked TIMESTAMPTZ",
+    "CREATE TABLE IF NOT EXISTS producers (id SERIAL PRIMARY KEY, name TEXT, key TEXT UNIQUE, genius_id BIGINT, instagram TEXT, twitter TEXT, email_checked TIMESTAMPTZ, email_found BOOLEAN, added TIMESTAMPTZ DEFAULT now())",
+    "CREATE TABLE IF NOT EXISTS producer_artists (producer_id INTEGER REFERENCES producers(id), artist_id INTEGER REFERENCES artists(id), PRIMARY KEY (producer_id, artist_id))",
+    "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS category TEXT",
+    "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS worked_with TEXT[]",
+    "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS found_via TEXT",
+    "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT",
+    "UPDATE contacts SET category = CASE WHEN source LIKE 'prod:%%' THEN 'producer' WHEN source LIKE 'yt:%%' THEN 'artist' ELSE 'own' END WHERE category IS NULL",
 ]
 
 

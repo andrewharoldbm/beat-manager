@@ -249,14 +249,18 @@ def research(request: Request, q: str = "", maxsup: str = "", minvpd: str = "", 
 @app.get("/contacts", response_class=HTMLResponse)
 def contacts(request: Request, list: str = "own"):
     c = db()
-    grp = "found" if list == "found" else "own"
-    cond = "source LIKE 'yt:%%'" if grp == "found" else "coalesce(source,'') NOT LIKE 'yt:%%'"
+    grp = list if list in ("own", "found", "producers") else "own"
+    cond = {"own": "coalesce(category,'own') = 'own'", "found": "category = 'artist'",
+            "producers": "category = 'producer'"}[grp]
     stats = c.execute(f"SELECT status, count(*) n FROM contacts WHERE {cond} GROUP BY status ORDER BY 2 DESC").fetchall()
     rows = c.execute(f"SELECT * FROM contacts WHERE {cond} ORDER BY replied DESC, opened_count DESC, id DESC LIMIT 500").fetchall()
-    counts = c.execute("""SELECT count(*) FILTER (WHERE coalesce(source,'') NOT LIKE 'yt:%%') own,
-                                 count(*) FILTER (WHERE source LIKE 'yt:%%') found FROM contacts""").fetchone()
+    counts = c.execute("""SELECT count(*) FILTER (WHERE coalesce(category,'own')='own') own,
+                                 count(*) FILTER (WHERE category='artist') found,
+                                 count(*) FILTER (WHERE category='producer') producers FROM contacts""").fetchone()
+    pstat = c.execute("""SELECT count(*) n, count(email_checked) checked, count(*) FILTER (WHERE email_found) found
+                         FROM producers""").fetchone()
     return page("contacts", request, stats=[(r["status"], r["n"]) for r in stats], rows=rows, grp=grp, counts=counts,
-                send_own=S.get(c, "email_send_own"), send_found=S.get(c, "email_send_found"))
+                send_own=S.get(c, "email_send_own"), send_found=S.get(c, "email_send_found"), pstat=pstat)
 
 
 @app.post("/contacts/import")

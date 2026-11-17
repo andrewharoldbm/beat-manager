@@ -291,6 +291,8 @@ def run():
                 from app.scanner import emails as EM
                 EM.tag_contacts(conn)
                 EM.step(conn)
+                from app.scanner import producers as PR
+                PR.step(conn)
                 from app.email.contacts import verify_pending
                 verify_pending(conn)
                 last_mail = now
