@@ -37,3 +37,25 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  scheduler:
+    build: .
+    restart: always
+    command: python -m app.pipeline.scheduler
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://beats:${DB_PASSWORD}@db:5432/beats
+      NUMBA_CACHE_DIR: /tmp
+    volumes:
+      - ./data/beats:/data/beats
+      - secrets:/data/secrets
+      - renders:/data/renders
+      - visuals:/data/visuals
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  secrets:
+  renders:
+  visuals:

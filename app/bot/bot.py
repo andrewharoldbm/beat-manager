@@ -11,7 +11,7 @@ import re
 import time
 import hashlib
 import httpx
-from app.common.db import connect, log_event
+from app.common.db import connect, log_event, ensure_schema
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 OWNER = int(os.environ.get("OWNER_CHAT_ID", "0") or 0)
@@ -75,9 +75,11 @@ def handle_audio(conn, msg):
     with open(dest, "wb") as f:
         f.write(data)
     producers = re.findall(r"@([A-Za-z0-9_.$]+)", (msg.get("caption") or "") + " " + fname) or ["conkretus"]
-    conn.execute("INSERT INTO beats(file_path, original_name, producers) VALUES (%s,%s,%s)",
-                 (dest, fname, producers))
-    send(f"Beat received: {fname}\nProducers: {' x '.join(producers)}\nIt will be analyzed shortly.")
+    caption = msg.get("caption") or ""
+    genres = re.findall(r"#([A-Za-z0-9_-]+)", caption)
+    conn.execute("INSERT INTO beats(file_path, original_name, producers, caption, genre) VALUES (%s,%s,%s,%s,%s)",
+                 (dest, fname, producers, caption, genres[0].lower() if genres else None))
+    send(f"Beat received: {fname}\nProducers: {' x '.join(producers)}\nGenre: {genres[0] if genres else 'auto'}\nIt will be analyzed shortly.")
 
 
 def run():
@@ -86,6 +88,7 @@ def run():
         while True:
             time.sleep(3600)
     conn = connect()
+    ensure_schema(conn)
     send("Beat Manager is online.")
     offset = 0
     pending = None  # ('kill'|'restore')
@@ -115,6 +118,16 @@ def run():
                 continue
             if text == "/status":
                 send(status(conn))
+            elif text == "/queue":
+                rows = conn.execute("""SELECT u.scheduled, coalesce(u.title, b.name) t, u.status FROM uploads u
+                                       JOIN beats b ON b.id=u.beat_id WHERE u.status IN ('scheduled','final')
+                                       ORDER BY u.scheduled LIMIT 7""").fetchall()
+                waiting = conn.execute("SELECT count(*) n FROM beats WHERE status='analyzed'").fetchone()["n"]
+                lines = [f"{r['scheduled']:%m-%d %H:%M} UTC  {r['t']}" + (" (preliminary)" if r['status']=='scheduled' else "") for r in rows]
+                send("Upcoming uploads:\n" + ("\n".join(lines) or "none") + f"\nAnalyzed, waiting for YouTube to be enabled: {waiting}")
+            elif text == "/review":
+                rows = conn.execute("SELECT name, review_note FROM beats WHERE needs_review ORDER BY id DESC LIMIT 10").fetchall()
+                send("Needs review:\n" + ("\n".join(f"{r['name']}: {r['review_note']}" for r in rows) or "nothing"))
             elif text == "/kill":
                 pending = "kill"
                 send("Send your PIN to confirm KILL.")

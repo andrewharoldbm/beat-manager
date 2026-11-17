@@ -37,3 +37,20 @@ def upsert_artist(conn, name, via, priority=5, mentions_inc=0):
         (name, key, via, priority, mentions_inc),
     ).fetchone()
     return row["id"]
+
+
+MIGRATIONS = [
+    "ALTER TABLE beats ADD COLUMN IF NOT EXISTS genre TEXT",
+    "ALTER TABLE beats ADD COLUMN IF NOT EXISTS caption TEXT",
+    "ALTER TABLE beats ADD COLUMN IF NOT EXISTS video_path TEXT",
+    "ALTER TABLE uploads ADD COLUMN IF NOT EXISTS description TEXT",
+    "ALTER TABLE uploads ADD COLUMN IF NOT EXISTS tags TEXT[]",
+    "ALTER TABLE uploads ADD COLUMN IF NOT EXISTS is_test BOOLEAN DEFAULT false",
+    "ALTER TABLE uploads ADD COLUMN IF NOT EXISTS title_locked BOOLEAN DEFAULT false",
+    "ALTER TABLE uploads ADD COLUMN IF NOT EXISTS error TEXT",
+]
+
+
+def ensure_schema(conn):
+    for m in MIGRATIONS:
+        conn.execute(m)
