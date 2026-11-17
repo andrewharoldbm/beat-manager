@@ -60,6 +60,7 @@ MIGRATIONS = [
     "ALTER TABLE email_packs ADD COLUMN IF NOT EXISTS resent_at TIMESTAMPTZ",
     "ALTER TABLE email_log ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'first'",
     "ALTER TABLE beats ADD COLUMN IF NOT EXISTS tg_msg_ids BIGINT[] DEFAULT '{}'",
+    "ALTER TABLE email_log ADD COLUMN IF NOT EXISTS subject TEXT",
 ]
 
 

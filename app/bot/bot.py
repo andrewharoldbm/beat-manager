@@ -12,6 +12,7 @@ import time
 import hashlib
 import httpx
 from app.common.db import connect, log_event, ensure_schema
+from app.common import producers as P
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 OWNER = int(os.environ.get("OWNER_CHAT_ID", "0") or 0)
@@ -91,11 +92,9 @@ def handle_audio(conn, msg):
     dest = os.path.join(INBOX, f"{int(time.time())}_{safe}")
     with open(dest, "wb") as f:
         f.write(data)
-    producers = re.findall(r"@([A-Za-z0-9_$-]+)", (msg.get("caption") or "") + " " + fname) or ["conkretus"]
+    producers = P.parse((msg.get("caption") or "") + " " + fname, conn)
     caption = msg.get("caption") or ""
     genres = re.findall(r"#([A-Za-z0-9_-]+)", caption)
-    if producers[0].lower() != "conkretus" and "conkretus" not in [p.lower() for p in producers]:
-        producers = ["conkretus"] + producers
     bid = conn.execute("""INSERT INTO beats(file_path, original_name, producers, caption, genre, tg_msg_ids)
                           VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
                        (dest, fname, producers, caption, genres[0].lower() if genres else None,
@@ -121,11 +120,11 @@ def change_producers(conn, beat, names):
     cur = list(beat["producers"] or ["conkretus"])
     for n in names:
         if n.startswith("-"):
-            n = n[1:].lstrip("@")
+            n = P.canon(n[1:], conn)
             if n.lower() != "conkretus":
                 cur = [p for p in cur if p.lower() != n.lower()]
         else:
-            n = n.lstrip("@")
+            n = P.canon(n, conn)
             if n.lower() not in [p.lower() for p in cur]:
                 cur.append(n)
     if "conkretus" not in [p.lower() for p in cur]:

@@ -22,7 +22,8 @@ def bpm_from_name(name: str):
 
 
 def tags_from_text(text: str):
-    producers = re.findall(r"@([A-Za-z0-9_$-]+)", text)
+    from app.common import producers as P
+    producers = P.parse(text)
     genres = [g.lower() for g in re.findall(r"#([A-Za-z0-9_-]+)", text)]
     return producers, genres
 

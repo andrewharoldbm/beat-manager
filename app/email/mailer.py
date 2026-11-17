@@ -133,20 +133,32 @@ def send_due(conn, svc):
         files = files_cache.setdefault(pid, pack_files(conn, pid))
         tok = secrets.token_urlsafe(12)
         text, html = compose(conn, files, c, tok)
-        subject = pick_subject(conn, kind)
+        subject = pick_subject(conn, c["id"])
         try:
             r = gmail.send(svc, c["email"], subject, text, html, [(f, n) for _, f, n in files])
-            conn.execute("INSERT INTO email_log(contact_id, pack_id, gmail_id, thread_id, status, kind) VALUES (%s,%s,%s,%s,%s,%s)",
-                         (c["id"], pid, r.get("id"), r.get("threadId"), "sent:" + tok, kind))
+            conn.execute("INSERT INTO email_log(contact_id, pack_id, gmail_id, thread_id, status, kind, subject) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                         (c["id"], pid, r.get("id"), r.get("threadId"), "sent:" + tok, kind, subject))
             conn.execute("UPDATE contacts SET last_sent=now(), sent_count=sent_count+1 WHERE id=%s", (c["id"],))
         except Exception as e:
             log_event(conn, "warn", "email", f"send to {c['email']} failed: {e}")
         time.sleep(30)  # slow and steady
 
 
-def pick_subject(conn, kind):
-    # re-sends look exactly like a new pack
-    return random.choice(S.get(conn, "email_subjects") or ["fresh beats"])
+SUBJECT_TWISTS = ["", " this week", " for you", " rn", " (new)", " pt 2", " pt 3"]
+
+
+def pick_subject(conn, contact_id):
+    """Never repeat a subject to the same person; prefer ones used least lately overall."""
+    base = S.get(conn, "email_subjects") or ["fresh beats"]
+    pool = [b + t for t in SUBJECT_TWISTS for b in base]
+    used = {r["subject"] for r in conn.execute(
+        "SELECT subject FROM email_log WHERE contact_id=%s AND subject IS NOT NULL", (contact_id,)).fetchall()}
+    fresh = [x for x in pool if x not in used] or pool
+    recent = {r["subject"]: r["n"] for r in conn.execute(
+        """SELECT subject, count(*) n FROM email_log WHERE sent_at > now()-interval '7 days'
+           AND subject IS NOT NULL GROUP BY subject""").fetchall()}
+    low = min(recent.get(x, 0) for x in fresh)
+    return random.choice([x for x in fresh if recent.get(x, 0) == low])
 
 
 def read_replies(conn, svc):

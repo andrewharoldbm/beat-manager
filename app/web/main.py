@@ -142,7 +142,8 @@ async def api_upload(file: UploadFile = File(...), relpath: str = Form(""), genr
     dest = os.path.join(INBOX, f"{int(time.time()*1000)}_{safe}")
     with open(dest, "wb") as f:
         f.write(data)
-    producers = re.findall(r"@([A-Za-z0-9_$-]+)", name) or ["conkretus"]
+    from app.common import producers as P
+    producers = P.parse(name, db())
     db().execute("INSERT INTO beats(file_path, original_name, producers, genre) VALUES (%s,%s,%s,%s)",
                   (dest, name, producers, g))
     return {"ok": True}
