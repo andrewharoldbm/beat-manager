@@ -30,7 +30,7 @@ def strip_links(text: str) -> str:
 
 def send(text: str):
     if TOKEN and OWNER:
-        c.post(f"{API}/sendMessage", json={"chat_id": OWNER, "text": strip_links(text),
+        return c.post(f"{API}/sendMessage", json={"chat_id": OWNER, "text": strip_links(text),
                                             "disable_web_page_preview": True})
 
 
@@ -94,9 +94,58 @@ def handle_audio(conn, msg):
     producers = re.findall(r"@([A-Za-z0-9_$-]+)", (msg.get("caption") or "") + " " + fname) or ["conkretus"]
     caption = msg.get("caption") or ""
     genres = re.findall(r"#([A-Za-z0-9_-]+)", caption)
-    conn.execute("INSERT INTO beats(file_path, original_name, producers, caption, genre) VALUES (%s,%s,%s,%s,%s)",
-                 (dest, fname, producers, caption, genres[0].lower() if genres else None))
-    send(f"Beat received: {fname}\nProducers: {' x '.join(producers)}\nGenre: {genres[0] if genres else 'auto'}\nIt will be analyzed shortly.")
+    if producers[0].lower() != "conkretus" and "conkretus" not in [p.lower() for p in producers]:
+        producers = ["conkretus"] + producers
+    bid = conn.execute("""INSERT INTO beats(file_path, original_name, producers, caption, genre, tg_msg_ids)
+                          VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
+                       (dest, fname, producers, caption, genres[0].lower() if genres else None,
+                        [msg["message_id"]])).fetchone()["id"]
+    r = send(f"Beat received: {fname}\nProducers: {' x '.join(producers)}\nGenre: {genres[0] if genres else 'auto'}\n"
+             "Forgot a producer? Reply to this message (or to the beat) with @name.")
+    remember_msg(conn, bid, r)
+
+
+def remember_msg(conn, beat_id, resp):
+    try:
+        mid = resp.json()["result"]["message_id"]
+        conn.execute("UPDATE beats SET tg_msg_ids = array_append(coalesce(tg_msg_ids,'{}'), %s) WHERE id=%s", (mid, beat_id))
+    except Exception:
+        pass
+
+
+PROD_LINE = re.compile(r"prod\. by [^\n]+")
+
+
+def add_producers(conn, beat, names):
+    """Add producers to a beat; fix the YouTube description too if it's already uploaded."""
+    cur = list(beat["producers"] or ["conkretus"])
+    for n in names:
+        if n.lower() not in [p.lower() for p in cur]:
+            cur.append(n)
+    conn.execute("UPDATE beats SET producers=%s WHERE id=%s", (cur, beat["id"]))
+    prods = " x ".join(cur)
+    note = "will be used in the YouTube description and emails"
+    for u in conn.execute("SELECT * FROM uploads WHERE beat_id=%s", (beat["id"],)).fetchall():
+        if u.get("description"):
+            conn.execute("UPDATE uploads SET description=%s WHERE id=%s",
+                         (PROD_LINE.sub(f"prod. by {prods}", u["description"]), u["id"]))
+        if u["platform"] == "youtube" and u["status"] == "uploaded" and u["external_id"]:
+            try:
+                from app.pipeline import youtube_api
+                youtube_api.update_description(u["external_id"], lambda d: PROD_LINE.sub(f"prod. by {prods}", d))
+                note = "YouTube description updated too"
+            except Exception as e:
+                log_event(conn, "warn", "bot", f"yt description update failed: {e}")
+                note = "could NOT update the YouTube description, fix it by hand"
+    send(f"{beat['name'] or beat['original_name']}: producers now {prods} ({note}).")
+
+
+def beat_for_reply(conn, msg):
+    rt = msg.get("reply_to_message")
+    if not rt:
+        return None
+    return conn.execute("SELECT * FROM beats WHERE %s = ANY(tg_msg_ids) ORDER BY id DESC LIMIT 1",
+                        (rt["message_id"],)).fetchone()
 
 
 def run():
@@ -137,8 +186,15 @@ def run():
                         c.post(f"{API}/answerCallbackQuery", json={"callback_query_id": cq["id"], "text": f"Genre set: {m.group(2)}"})
                 continue
             msg = u.get("message") or {}
-            if msg.get("chat", {}).get("id") != OWNER:
-                continue  # ignore everyone else
+            if msg.get("chat", {}).get("id") != OWNER or msg.get("from", {}).get("id") != OWNER:
+                fr = msg.get("from", {})
+                log_event(conn, "warn", "bot", f"ignored message from id {fr.get('id')} @{fr.get('username')}")
+                if not hasattr(run, "_warned"):
+                    run._warned = set()
+                if fr.get("id") not in run._warned:
+                    run._warned.add(fr.get("id"))
+                    send(f"Someone else wrote to the bot and was ignored: id {fr.get('id')}, @{fr.get('username')}. Nothing was accepted from them.")
+                continue
             text = (msg.get("text") or "").strip()
             if pending and text and not text.startswith("/"):
                 if pin_ok(text):
@@ -154,6 +210,23 @@ def run():
                 else:
                     send("Wrong PIN.")
                 pending = None
+                continue
+            names = re.findall(r"@([A-Za-z0-9_$-]+)", text)
+            if names and msg.get("reply_to_message"):
+                b = beat_for_reply(conn, msg)
+                if b:
+                    add_producers(conn, b, names)
+                else:
+                    send("I don't know which beat that message belongs to. Reply to the beat or to my 'Beat received' message.")
+                continue
+            m = re.match(r"/prod\s+(.+?)\s+(@.+)$", text)
+            if m:
+                b = conn.execute("""SELECT * FROM beats WHERE lower(coalesce(name, original_name)) LIKE %s
+                                    ORDER BY id DESC LIMIT 1""", (f"%{m.group(1).lower()}%",)).fetchone()
+                if b:
+                    add_producers(conn, b, re.findall(r"@([A-Za-z0-9_$-]+)", m.group(2)))
+                else:
+                    send(f"No beat found matching '{m.group(1)}'.")
                 continue
             if text == "/status":
                 send(status(conn))
@@ -173,7 +246,7 @@ def run():
                 send("YouTube uploading " + ("RESUMED." if text == "/resume" else "PAUSED. Beats keep being analyzed."))
             elif text == "/help":
                 send("Commands:\n/status - system state\n/queue - next uploads\n/review - beats to check\n"
-                     "/pause, /resume - YouTube uploading\n/kill, /restore - emergency stop (PIN)\n"
+                     "/pause, /resume - YouTube uploading\n/prod <beat name> @name - add a producer later (or just reply to the beat with @name)\n/kill, /restore - emergency stop (PIN)\n"
                      "Send an mp3/wav with a caption like: #detroit @conkretus @rsd")
             elif text == "/kill":
                 pending = "kill"

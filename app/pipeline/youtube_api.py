@@ -51,3 +51,15 @@ def upload(video_path, title, description, tags, thumbnail=None, publish_at=None
         except Exception:
             pass
     return vid
+
+
+def update_description(video_id, fn):
+    """Fetch the video's snippet, apply fn(description)->description, save it back."""
+    yt = service()
+    if not yt:
+        raise RuntimeError("YouTube not connected")
+    v = yt.videos().list(part="snippet", id=video_id).execute()["items"][0]
+    sn = v["snippet"]
+    sn["description"] = fn(sn.get("description", ""))
+    yt.videos().update(part="snippet", body={"id": video_id, "snippet": {
+        k: sn[k] for k in ("title", "description", "tags", "categoryId") if k in sn}}).execute()

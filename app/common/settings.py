@@ -17,6 +17,9 @@ DEFAULTS = {
     "email_daily_limit": 40,
     "autopilot_hours": 72,
     "artist_bpm": None,
+    # drafts - to be reviewed with the owner before emails are switched on
+    "email_subjects": ["new beats", "few new beats", "beats for you", "some new ones"],
+    "email_subjects_resend": ["in case you missed these", "these are still available", "beats from last time"],
 }
 
 

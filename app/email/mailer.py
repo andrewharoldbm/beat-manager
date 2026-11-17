@@ -9,6 +9,7 @@
 import datetime as dt
 import os
 import re
+import random
 import secrets
 import subprocess
 import time
@@ -90,75 +91,69 @@ def compose(files, contact, track_token):
 
 
 RESEND_MIN_DAYS = 14
-RESEND_MAX_OPEN = 0.25
 
 
-def pick_resend(conn):
-    """When no fresh beats are left: re-send the weakest old pack to people who never opened it."""
+def resend_targets(conn, limit):
+    """People who got a pack 14+ days ago, never opened it, never replied, and haven't had it re-sent.
+    Oldest/weakest packs first. Each person gets each pack at most twice in total."""
     return conn.execute("""
-        SELECT p.id, count(l.*) sent,
-               count(*) FILTER (WHERE l.status LIKE 'opened%%' OR c.replied) opened
-        FROM email_packs p JOIN email_log l ON l.pack_id=p.id AND l.kind='first'
-        JOIN contacts c ON c.id=l.contact_id
-        WHERE p.sent_at < now() - make_interval(days => %s) AND p.resent_at IS NULL
-        GROUP BY p.id HAVING count(l.*) >= 5
-           AND count(*) FILTER (WHERE l.status LIKE 'opened%%' OR c.replied)::float / count(l.*) < %s
-        ORDER BY 3::float / 2 LIMIT 1""", (RESEND_MIN_DAYS, RESEND_MAX_OPEN)).fetchone()
+        SELECT c.*, l.pack_id FROM email_log l JOIN contacts c ON c.id=l.contact_id
+        WHERE l.kind='first' AND l.status NOT LIKE 'opened%%' AND l.sent_at < now() - make_interval(days => %s)
+          AND c.status='valid' AND NOT c.unsubscribed AND NOT c.replied
+          AND (c.last_sent IS NULL OR c.last_sent < now()-interval '6 days')
+          AND NOT EXISTS (SELECT 1 FROM email_log r WHERE r.contact_id=c.id AND r.pack_id=l.pack_id AND r.kind='resend')
+        ORDER BY l.pack_id, c.id LIMIT %s""", (RESEND_MIN_DAYS, limit)).fetchall()
 
 
 def send_due(conn, svc):
     now = dt.datetime.now(dt.timezone.utc)
     if now.weekday() == int(S.get(conn, "email_weekday")):
-        last = conn.execute("SELECT max(greatest(sent_at, resent_at)) t FROM email_packs").fetchone()["t"]
+        last = conn.execute("SELECT max(sent_at) t FROM email_packs").fetchone()["t"]
         if not last or last < now - dt.timedelta(days=6):
             pid = build_pack(conn, int(S.get(conn, "email_pack_size")))
             if pid:
                 conn.execute("UPDATE email_packs SET sent_at=now() WHERE id=%s", (pid,))
                 notify(f"New email pack #{pid} created; sending to contacts over the next days.")
-            else:
-                r = pick_resend(conn)
-                if r:
-                    conn.execute("UPDATE email_packs SET resent_at=now() WHERE id=%s", (r["id"],))
-                    notify(f"No new beats left for packs. Re-sending weak pack #{r['id']} "
-                           f"({r['opened']}/{r['sent']} opened) to people who didn't open it.")
-                else:
-                    notify("No new beats left for email packs and nothing worth re-sending. Send more beats.")
-    pack = conn.execute("""SELECT id, resent_at IS NOT NULL AND resent_at >= sent_at AS resend FROM email_packs
-                           WHERE sent_at IS NOT NULL ORDER BY greatest(sent_at, resent_at) DESC LIMIT 1""").fetchone()
-    if not pack:
-        return
+            elif not conn.execute("SELECT 1 FROM events WHERE kind='email' AND message='no new beats' AND at > now()-interval '6 days'").fetchone():
+                log_event(conn, "info", "email", "no new beats")
+                notify("No new beats left for email packs. Re-sending older packs to people who didn't open them. Send more beats when you can.")
     sent_today = conn.execute("SELECT count(*) n FROM email_log WHERE sent_at > now()-interval '24 hours'").fetchone()["n"]
-    budget = int(S.get(conn, "email_daily_limit")) - sent_today
+    budget = min(int(S.get(conn, "email_daily_limit")) - sent_today, 5)
     if budget <= 0:
         return
-    if pack["resend"]:
-        targets = conn.execute("""SELECT c.* FROM contacts c JOIN email_log l ON l.contact_id=c.id AND l.pack_id=%s
-                                  WHERE c.status='valid' AND NOT c.unsubscribed AND NOT c.replied
-                                  AND l.kind='first' AND l.status NOT LIKE 'opened%%'
-                                  AND c.id NOT IN (SELECT contact_id FROM email_log WHERE pack_id=%s AND kind='resend')
-                                  AND (c.last_sent IS NULL OR c.last_sent < now()-interval '6 days')
-                                  ORDER BY c.id LIMIT %s""", (pack["id"], pack["id"], min(budget, 5))).fetchall()
-        kind, subject = "resend", "beats you might've missed"
-    else:
-        targets = conn.execute("""SELECT * FROM contacts WHERE status='valid' AND NOT unsubscribed
-                                  AND id NOT IN (SELECT contact_id FROM email_log WHERE pack_id=%s)
-                                  AND (last_sent IS NULL OR last_sent < now()-interval '6 days')
-                                  ORDER BY replied DESC, opened_count DESC, id LIMIT %s""", (pack["id"], min(budget, 5))).fetchall()
-        kind, subject = "first", "new beats for you"
-    if not targets:
-        return
-    files = pack_files(conn, pack["id"])
-    for c in targets:
+    jobs = []  # (contact, pack_id, kind)
+    pack = conn.execute("SELECT id FROM email_packs WHERE sent_at IS NOT NULL ORDER BY sent_at DESC LIMIT 1").fetchone()
+    if pack:
+        for c in conn.execute("""SELECT * FROM contacts WHERE status='valid' AND NOT unsubscribed
+                                 AND id NOT IN (SELECT contact_id FROM email_log WHERE pack_id=%s)
+                                 AND (last_sent IS NULL OR last_sent < now()-interval '6 days')
+                                 ORDER BY replied DESC, opened_count DESC, id LIMIT %s""", (pack["id"], budget)).fetchall():
+            jobs.append((c, pack["id"], "first"))
+    if len(jobs) < budget:  # everyone has the newest pack -> use spare capacity on re-sends
+        seen = {c["id"] for c, _, _ in jobs}
+        for c in resend_targets(conn, budget - len(jobs)):
+            if c["id"] not in seen:
+                jobs.append((c, c["pack_id"], "resend"))
+    files_cache = {}
+    for c, pid, kind in jobs:
+        files = files_cache.setdefault(pid, pack_files(conn, pid))
         tok = secrets.token_urlsafe(12)
         text, html = compose(files, c, tok)
+        subject = pick_subject(conn, kind)
         try:
             r = gmail.send(svc, c["email"], subject, text, html, [(f, n) for _, f, n in files])
             conn.execute("INSERT INTO email_log(contact_id, pack_id, gmail_id, thread_id, status, kind) VALUES (%s,%s,%s,%s,%s,%s)",
-                         (c["id"], pack["id"], r.get("id"), r.get("threadId"), "sent:" + tok, kind))
+                         (c["id"], pid, r.get("id"), r.get("threadId"), "sent:" + tok, kind))
             conn.execute("UPDATE contacts SET last_sent=now(), sent_count=sent_count+1 WHERE id=%s", (c["id"],))
         except Exception as e:
             log_event(conn, "warn", "email", f"send to {c['email']} failed: {e}")
         time.sleep(30)  # slow and steady
+
+
+def pick_subject(conn, kind):
+    key = "email_subjects_resend" if kind == "resend" else "email_subjects"
+    opts = S.get(conn, key) or ["beats"]
+    return random.choice(opts)
 
 
 def read_replies(conn, svc):

@@ -299,7 +299,8 @@ def settings_page(request: Request, saved: int = 0, err: str = ""):
     c = db()
     s = {k: S.get(c, k) for k in SETTING_KEYS}
     return page("settings", request, s=s, saved=saved, err=err, formulas=json.dumps(meta.load_formulas(c), indent=2),
-                artist_bpm=json.dumps(S.get(c, "artist_bpm") or meta.DEFAULT_ARTIST_BPM, indent=2))
+                artist_bpm=json.dumps(S.get(c, "artist_bpm") or meta.DEFAULT_ARTIST_BPM, indent=2),
+                subj="\n".join(S.get(c, "email_subjects")), subj_re="\n".join(S.get(c, "email_subjects_resend")))
 
 
 @app.post("/settings")
@@ -317,6 +318,10 @@ async def settings_save(request: Request):
     except Exception:
         return RedirectResponse("/settings?err=Artist+BPM+JSON+is+invalid", status_code=303)
     S.set_(c, "artist_bpm", abpm)
+    for k in ("email_subjects", "email_subjects_resend"):
+        lines = [l.strip()[:120] for l in (f.get(k) or "").splitlines() if l.strip()]
+        if lines:
+            S.set_(c, k, lines)
     hours = [int(h) for h in re.findall(r"\d+", f.get("upload_hours_utc", "")) if 0 <= int(h) <= 23] or [16]
     S.set_(c, "yt_enabled", "yt_enabled" in f)
     S.set_(c, "tg_channel_enabled", "tg_channel_enabled" in f)
