@@ -151,7 +151,22 @@ def send_due(conn, svc):
                                  AND (last_sent IS NULL OR last_sent < now()-interval '6 days')
                                  ORDER BY replied DESC, opened_count DESC, id LIMIT %s""", (pack["id"], budget)).fetchall():
             jobs.append((c, pack["id"], "first"))
-    if len(jobs) < budget:  # everyone has the newest pack -> use spare capacity on re-sends
+    if len(jobs) < budget:  # contacts added later get the older packs too, best-opened packs first
+        seen = {c["id"] for c, _, _ in jobs}
+        for c in conn.execute("""
+            SELECT DISTINCT ON (c.id) c.*, p.id AS pack_id FROM contacts c
+            CROSS JOIN email_packs p
+            LEFT JOIN LATERAL (SELECT count(*) n, count(*) FILTER (WHERE status LIKE 'opened%%') o
+                               FROM email_log WHERE pack_id=p.id AND kind='first') st ON true
+            WHERE p.sent_at IS NOT NULL AND c.status='valid' AND NOT c.unsubscribed AND """ + audience_sql(conn, "c") + """
+              AND (c.last_sent IS NULL OR c.last_sent < now()-interval '6 days')
+              AND NOT EXISTS (SELECT 1 FROM email_log l WHERE l.contact_id=c.id AND l.pack_id=p.id)
+            ORDER BY c.id, (st.o::float / greatest(st.n, 1)) DESC, p.id DESC
+            LIMIT %s""", (budget - len(jobs),)).fetchall():
+            if c["id"] not in seen:
+                jobs.append((c, c["pack_id"], "first"))
+                seen.add(c["id"])
+    if len(jobs) < budget:  # everyone has every pack -> use spare capacity on re-sends
         seen = {c["id"] for c, _, _ in jobs}
         for c in resend_targets(conn, budget - len(jobs)):
             if c["id"] not in seen:
