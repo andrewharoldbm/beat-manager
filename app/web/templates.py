@@ -19,7 +19,7 @@ textarea{width:100%;min-height:220px;font-family:ui-monospace,Menlo,monospace;fo
 .drop{border:2px dashed var(--line);border-radius:12px;padding:30px;text-align:center;color:var(--mut)}
 </style></head><body>
 {% if nav %}<nav><span class="brand">BEAT MANAGER</span>
-{% for href,label in [('/','Overview'),('/beats','Beats'),('/queue','Calendar'),('/research','Research'),('/contacts','Contacts'),('/events','Log'),('/settings','Settings')] %}
+{% for href,label in [('/','Overview'),('/beats','Beats'),('/queue','Calendar'),('/research','Research'),('/emails','Emails'),('/contacts','Contacts'),('/events','Log'),('/settings','Settings')] %}
 <a href="{{href}}" class="{{'on' if active==href}}">{{label}}</a>{% endfor %}
 <form method="post" action="/logout" class="inline" style="margin-left:auto"><button class="sec">Log out</button></form></nav>{% endif %}
 <main>{% block body %}{% endblock %}</main></body></html>"""
@@ -56,24 +56,37 @@ OVERVIEW = """{% extends 'base' %}{% block body %}
 BEATS = """{% extends 'base' %}{% block body %}
 <h1>Beats</h1>
 <div class="card">
-<p>Upload beats (.mp3 / .wav). Choose a <b>folder</b>: sub-folder names become the genre (e.g. <code>detroit/</code>, <code>rage/</code>).
-Tag producers in file names with <code>@name</code>, BPM with <code>140bpm</code>.</p>
-<div class="row"><input type="file" id="dir" webkitdirectory multiple><span class="mut">or</span><input type="file" id="files" multiple accept=".mp3,.wav">
-<input id="genre" placeholder="genre for loose files (optional)"><button onclick="up()">Upload</button></div>
-<p id="prog" class="mut"></p></div>
+<div class="row" style="margin-bottom:10px"><b>1. Batch genre</b>
+<select id="genre">{% for g in genres %}<option {{'selected' if g=='detroit'}}>{{g}}</option>{% endfor %}</select>
+<input id="newgenre" placeholder="or new genre" size=14>
+<span class="mut">Producers in file names: <code>@conkretus @rsd</code>, BPM: <code>142bpm</code></span></div>
+<div id="drop" class="drop"><b>2. Drag &amp; drop beats here</b><br><span class="mut">or</span> <label style="text-decoration:underline;cursor:pointer">choose files<input type="file" id="pick" multiple accept=".mp3,.wav" hidden></label></div>
+<div id="list" style="margin-top:10px"></div>
+<div class="row" style="margin-top:10px"><button id="go" onclick="up()" disabled>3. Upload</button><span id="prog" class="mut"></span></div>
+</div>
 <h2>All beats</h2>
-<table><tr><th>#</th><th>Name</th><th>Genre</th><th>BPM</th><th>Key</th><th>Hz</th><th>Producers</th><th>Status</th><th></th></tr>
+<table><tr><th>#</th><th>Name</th><th>Genre</th><th>BPM</th><th>Key</th><th>Hz</th><th>Producers</th><th>Status</th><th>Edit</th></tr>
 {% for b in beats %}<tr><td class="mut">{{b.id}}</td><td>{{b.name or b.original_name}}{% if b.needs_review %}<div class="warn">{{b.review_note}}</div>{% endif %}</td>
-<td>{{b.genre or ''}}</td><td>{{b.bpm or ''}}</td><td>{{b.musical_key or ''}}<div class="mut">{{b.key_alt or ''}}</div></td><td>{{b.tuning_hz or ''}}</td>
+<td>{{b.genre or ''}}</td><td>{{b.bpm|int if b.bpm else ''}}</td><td>{{b.musical_key or ''}}<div class="mut">{{b.key_alt or ''}}</div></td><td>{{b.tuning_hz|int if b.tuning_hz else ''}}</td>
 <td>{{(b.producers or [])|join(' x ')}}</td><td><span class="pill">{{b.status}}</span></td>
-<td><form method="post" action="/beats/{{b.id}}/edit" class="row"><input name="genre" value="{{b.genre or ''}}" size=7><input name="bpm" value="{{b.bpm or ''}}" size=4><input name="key" value="{{b.musical_key or ''}}" size=8><input name="bs" value="{{b.beatstars_url or ''}}" placeholder="BeatStars link" size=14><button class="sec">Save</button></form></td></tr>{% endfor %}</table>
+<td><form method="post" action="/beats/{{b.id}}/edit" class="row"><input name="genre" value="{{b.genre or ''}}" size=7 title="genre"><input name="bpm" value="{{b.bpm|int if b.bpm else ''}}" size=3 title="BPM"><input name="key" value="{{b.musical_key or ''}}" size=7 title="key"><input name="bs" value="{{b.beatstars_url or ''}}" placeholder="BeatStars link" size=12><button class="sec">Save</button></form></td></tr>{% endfor %}</table>
 <script>
-async function up(){const d=document.getElementById('dir').files,f=document.getElementById('files').files,g=document.getElementById('genre').value;
-const all=[...d,...f];const p=document.getElementById('prog');let ok=0,bad=0;
-for(const file of all){if(!/\\.(mp3|wav)$/i.test(file.name))continue;const fd=new FormData();fd.append('file',file);
-fd.append('relpath',file.webkitRelativePath||'');fd.append('genre',g);
-const r=await fetch('/api/upload',{method:'POST',body:fd});r.ok?ok++:bad++;p.textContent=`Uploaded ${ok}, failed ${bad} of ${all.length}`;}
-p.textContent+=' — done';setTimeout(()=>location.reload(),1200);}
+let files=[];const genres={{genres|tojson}};
+const drop=document.getElementById('drop'),list=document.getElementById('list');
+function batchGenre(){return (document.getElementById('newgenre').value.trim()||document.getElementById('genre').value).toLowerCase();}
+function add(fl){for(const f of fl){if(/\\.(mp3|wav)$/i.test(f.name))files.push({f,g:null});}render();}
+function render(){document.getElementById('go').disabled=!files.length;
+ list.innerHTML=files.length?'<table><tr><th>File</th><th>Genre (change single beats if needed)</th><th></th></tr>'+files.map((x,i)=>
+ `<tr><td>${x.f.name.replace(/</g,'&lt;')}</td><td><select onchange="files[${i}].g=this.value">${['(batch: '+batchGenre()+')',...genres].map(g=>`<option ${x.g===g?'selected':''} value="${g.startsWith('(')?'':g}">${g}</option>`).join('')}</select></td><td><button class="sec" onclick="files.splice(${i},1);render()">x</button></td></tr>`).join('')+'</table>':'';}
+['dragover','dragenter'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.style.borderColor='var(--acc)';}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.style.borderColor='';}));
+drop.addEventListener('drop',ev=>add(ev.dataTransfer.files));
+document.getElementById('pick').addEventListener('change',ev=>add(ev.target.files));
+document.getElementById('genre').addEventListener('change',render);document.getElementById('newgenre').addEventListener('input',render);
+async function up(){const p=document.getElementById('prog');let ok=0,bad=0;document.getElementById('go').disabled=true;
+for(const x of files){const fd=new FormData();fd.append('file',x.f);fd.append('relpath','');fd.append('genre',x.g||batchGenre());
+const r=await fetch('/api/upload',{method:'POST',body:fd});r.ok?ok++:bad++;p.textContent=`Uploaded ${ok}, failed ${bad} of ${files.length}`;}
+p.textContent+=' — done';files=[];setTimeout(()=>location.reload(),1200);}
 </script>{% endblock %}"""
 
 QUEUE = """{% extends 'base' %}{% block body %}
@@ -95,17 +108,29 @@ Edit a title to lock it.</p>
 
 RESEARCH = """{% extends 'base' %}{% block body %}
 <h1>Research</h1>
+<div class="card" style="margin-bottom:12px">
+<b>How to read this</b>
+<div class="grid" style="margin-top:8px">
+<div><span class="pill ok">GOOD NICHE</span><div class="mut">People search for this artist, but few type beats are uploaded. Best for the B (niche) slot.</div></div>
+<div><span class="pill">BIG NAME</span><div class="mut">Lots of searches and lots of competition. Use as the A (traffic) name.</div></div>
+<div><span class="pill warn">CROWDED</span><div class="mut">Too many type beats for the demand. Avoid or use only as 3rd name.</div></div>
+<div><span class="pill mut">LOW DEMAND</span><div class="mut">Few people search for it yet. Watch, don't use.</div></div>
+</div>
+<p class="mut" style="margin:10px 0 0"><b>Searches</b> = how many views a typical type beat for this artist gets per day (shows real search demand).
+<b>Competition</b> = how many new type beats were uploaded in the last 30 days.</p></div>
 <form class="row card" method="get">
-<input name="q" value="{{q}}" placeholder="artist name or tag (detroit, flint, plugg…)">
-<label class="mut">max uploads/30d <input name="maxsup" value="{{maxsup}}" size=3></label>
-<label class="mut">min views/day <input name="minvpd" value="{{minvpd}}" size=4></label>
-<select name="sort">{% for k,l in [('opp','Opportunity'),('vpd','Demand'),('sup','Least competition'),('name','Name')] %}<option value="{{k}}" {{'selected' if sort==k}}>{{l}}</option>{% endfor %}</select>
+<input name="q" value="{{q}}" placeholder="genre or artist (detroit, flint, plugg, BabyTron…)" size=34>
+<select name="sort">{% for k,l in [('opp','Best niches first'),('vpd','Most searched'),('sup','Least competition'),('name','A–Z')] %}<option value="{{k}}" {{'selected' if sort==k}}>{{l}}</option>{% endfor %}</select>
+<label class="mut"><input type="checkbox" name="only" value="niche" {{'checked' if only=='niche'}}> only good niches</label>
 <button>Search</button></form>
-<p class="mut">Demand = median views/day of that artist's type beat videos (<1y). Competition = type beats uploaded in the last 7 / 30 days (search page shows up to 20).</p>
-<table><tr><th>Artist</th><th>Tags</th><th>Views/day</th><th>Uploads 7d / 30d</th><th>Median views (this month)</th><th>Top-5 avg</th><th>Measured</th></tr>
-{% for r in rows %}<tr><td>{{r.name}}</td><td class="mut">{{r.tags or ''}}</td><td>{{'%.0f'|format(r.vpd_med or 0)}}</td><td>{{r.sup7}} / {{r.sup30}}</td><td>{{r.med_month}}</td><td>{{r.top5_avg}}</td><td class="mut">{{r.measured.strftime('%d %b') if r.measured}}</td></tr>
-{% else %}<tr><td colspan=7 class="mut">No results</td></tr>{% endfor %}</table>
-<h2>Title formulas</h2><p class="mut">Edit in Settings.</p><pre class="card">{{formulas}}</pre>
+<table><tr><th>Artist</th><th>Verdict</th><th>Searches</th><th>Competition</th><th>Genres</th><th>Updated</th></tr>
+{% for r in rows %}<tr><td><b>{{r.name}}</b></td>
+<td><span class="pill {{r.vclass}}">{{r.verdict}}</span></td>
+<td>{{r.dlabel}} <span class="mut">· {{'%.0f'|format(r.vpd_med or 0)}} views/day</span></td>
+<td>{{r.clabel}} <span class="mut">· {{r.sup30}}{{'+' if r.sup30>=20}} uploads/30d</span></td>
+<td class="mut">{{r.tags or ''}}</td><td class="mut">{{r.measured.strftime('%d %b') if r.measured}}</td></tr>
+{% else %}<tr><td colspan=6 class="mut">No results</td></tr>{% endfor %}</table>
+<h2>Current title formulas</h2><p class="mut">Edit in Settings.</p><pre class="card">{{formulas}}</pre>
 {% endblock %}"""
 
 CONTACTS = """{% extends 'base' %}{% block body %}
@@ -139,7 +164,35 @@ SETTINGS = """{% extends 'base' %}{% block body %}
 <label>Beats per email pack <input name="email_pack_size" value="{{s.email_pack_size}}" size=3></label>
 <label>Max emails per day <input name="email_daily_limit" value="{{s.email_daily_limit}}" size=4></label>
 <label>Title formulas (JSON)<textarea name="formulas">{{formulas}}</textarea></label>
+<label>Artist BPM ranges (beats outside the range won't get that artist in the title; half/double time counts)
+<textarea name="artist_bpm" style="min-height:120px">{{artist_bpm}}</textarea></label>
 <button>Save</button></form>{% endblock %}"""
 
+EMAILS = """{% extends 'base' %}{% block body %}
+<h1>Emails</h1>
+<div class="grid">
+<div class="card"><div class="mut">Sent this week</div><div class="big">{{w.sent}}</div></div>
+<div class="card"><div class="mut">Opened</div><div class="big">{{w.opened}}</div><div class="mut">{{w.open_rate}}% open rate</div></div>
+<div class="card"><div class="mut">Replied</div><div class="big ok">{{w.replied}}</div></div>
+<div class="card"><div class="mut">Bounced</div><div class="big {{'bad' if w.bounced}}">{{w.bounced}}</div></div>
+<div class="card"><div class="mut">Still to send (current pack)</div><div class="big">{{pending}}</div></div>
+<div class="card"><div class="mut">Email packs</div><div class="big {{'ok' if enabled else 'warn'}}">{{'ON' if enabled else 'OFF'}}</div></div>
+</div>
+<h2>Sent this week</h2>
+<table><tr><th>When</th><th>To</th><th>Role</th><th>Pack</th><th>Opened</th><th>Replied</th></tr>
+{% for r in week %}<tr><td class="mut">{{r.sent_at.strftime('%a %d %b %H:%M')}}</td><td>{{r.email}}{% if r.name %} <span class="mut">({{r.name}})</span>{% endif %}</td><td>{{r.role or ''}}</td>
+<td>#{{r.pack_id}}</td><td>{{'yes' if r.status.startswith('opened') else ''}}</td><td class="ok">{{'yes' if r.replied else ''}}</td></tr>
+{% else %}<tr><td colspan=6 class="mut">Nothing sent this week</td></tr>{% endfor %}</table>
+<h2>Weekly history</h2>
+<table><tr><th>Week</th><th>Sent</th><th>Opened</th><th>Open rate</th></tr>
+{% for h in hist %}<tr><td>{{h.wk.strftime('%d %b %Y')}}</td><td>{{h.sent}}</td><td>{{h.opened}}</td><td>{{h.rate}}%</td></tr>{% else %}<tr><td colspan=4 class="mut">No history yet</td></tr>{% endfor %}</table>
+<h2>Packs</h2>
+<table><tr><th>#</th><th>Started</th><th>Beats</th><th>Recipients</th></tr>
+{% for p in packs %}<tr><td>{{p.id}}</td><td>{{p.sent_at.strftime('%d %b') if p.sent_at else 'not sent'}}</td><td>{{p.beats}}</td><td>{{p.n}}</td></tr>{% endfor %}</table>
+<h2>Most engaged contacts</h2>
+<table><tr><th>Email</th><th>Sent</th><th>Opened</th><th>Replied</th><th>Last sent</th></tr>
+{% for c in hot %}<tr><td>{{c.email}}</td><td>{{c.sent_count}}</td><td>{{c.opened_count}}</td><td class="ok">{{'yes' if c.replied else ''}}</td><td class="mut">{{c.last_sent.strftime('%d %b') if c.last_sent}}</td></tr>{% endfor %}</table>
+{% endblock %}"""
+
 ALL = {"base": BASE, "login": LOGIN, "overview": OVERVIEW, "beats": BEATS, "queue": QUEUE,
-       "research": RESEARCH, "contacts": CONTACTS, "events": EVENTS, "settings": SETTINGS}
+       "research": RESEARCH, "contacts": CONTACTS, "emails": EMAILS, "events": EVENTS, "settings": SETTINGS}

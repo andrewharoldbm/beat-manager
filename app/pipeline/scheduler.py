@@ -115,7 +115,11 @@ def step_finalize(conn):
         if r["title_locked"]:
             conn.execute("UPDATE uploads SET status='final' WHERE id=%s", (r["uid"],))
             continue
-        artists, suffix, is_test = meta.pick_formula(formulas, r["genre"])
+        ranges = S.get(conn, "artist_bpm") or meta.DEFAULT_ARTIST_BPM
+        artists, suffix, is_test, fits = meta.pick_formula(formulas, r["genre"], r["bpm"], ranges)
+        if not fits:
+            notify(f"BPM check: {r['name']} ({r['bpm']:g} BPM) doesn't fit the usual tempo of the {r['genre']} formula artists. "
+                   f"Using: {' x '.join(artists)}. Change it in the dashboard Calendar if needed.")
         title = meta.make_title(artists, suffix, r["name"], meta.free_flag(S.get(conn, "free_tag")))
         desc = meta.make_description(r, artists, suffix, telegram=S.get(conn, "telegram_channel_url"),
                                      instagram=S.get(conn, "instagram_url"), beatstars_url=r.get("beatstars_url"))

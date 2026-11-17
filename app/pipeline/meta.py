@@ -45,11 +45,34 @@ def beat_name(original_name: str) -> str:
     return (base or "Untitled").upper()
 
 
-def pick_formula(formulas, genre):
+DEFAULT_ARTIST_BPM = {"BabyTron": [120, 160], "Buddyy": [120, 165]}
+
+
+def bpm_fits(artists, bpm, ranges):
+    """True if the beat's BPM (or its half/double time) is inside every artist's range."""
+    if not bpm:
+        return True
+    for a in artists:
+        r = ranges.get(a)
+        if r and not any(r[0] <= x <= r[1] for x in (bpm, bpm / 2, bpm * 2)):
+            return False
+    return True
+
+
+def pick_formula(formulas, genre, bpm=None, ranges=None):
+    """Returns (artists, suffix, is_test, fits). Prefers formulas whose artists fit the beat's BPM."""
+    ranges = ranges if ranges is not None else DEFAULT_ARTIST_BPM
     f = formulas.get(genre) or formulas.get("detroit")
     is_test = bool(f.get("tests")) and random.random() < f.get("test_share", 0.25)
-    artists = random.choice(f["tests"]) if is_test else f["main"]
-    return artists, f.get("suffix", ""), is_test
+    order = ([random.choice(f["tests"])] if is_test else []) + [f["main"]] + list(f.get("tests", []))
+    for artists in order:
+        if bpm_fits(artists, bpm, ranges):
+            return artists, f.get("suffix", ""), artists != f["main"], True
+    for g2, f2 in formulas.items():  # another genre's formula that fits
+        for artists in [f2["main"]] + list(f2.get("tests", [])):
+            if bpm_fits(artists, bpm, ranges):
+                return artists, f2.get("suffix", ""), True, False
+    return f["main"], f.get("suffix", ""), False, False
 
 
 def make_title(artists, suffix, name, free: bool):

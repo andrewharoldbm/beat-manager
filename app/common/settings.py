@@ -16,6 +16,7 @@ DEFAULTS = {
     "email_weekday": 1,          # Tuesday (0=Mon)
     "email_daily_limit": 40,
     "autopilot_hours": 72,
+    "artist_bpm": None,
 }
 
 
