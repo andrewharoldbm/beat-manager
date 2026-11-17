@@ -143,10 +143,14 @@ async def api_upload(file: UploadFile = File(...), relpath: str = Form(""), genr
 
 
 @app.post("/beats/{bid}/edit")
-def beat_edit(bid: int, genre: str = Form(""), bpm: str = Form(""), key: str = Form("")):
+def beat_edit(bid: int, genre: str = Form(""), bpm: str = Form(""), key: str = Form(""), bs: str = Form("")):
+    bs = bs.strip()
+    if bs and not re.match(r"^https://(www\.)?beatstars\.com/", bs):
+        bs = ""
     db().execute("""UPDATE beats SET genre=nullif(%s,''), bpm=coalesce(nullif(%s,'')::real, bpm),
-                    musical_key=coalesce(nullif(%s,''), musical_key), needs_review=false WHERE id=%s""",
-                 (genre.strip().lower(), bpm.strip(), key.strip(), bid))
+                    musical_key=coalesce(nullif(%s,''), musical_key), beatstars_url=coalesce(nullif(%s,''), beatstars_url),
+                    needs_review=false WHERE id=%s""",
+                 (genre.strip().lower(), bpm.strip(), key.strip(), bs, bid))
     return RedirectResponse("/beats", status_code=303)
 
 
@@ -156,8 +160,10 @@ def queue(request: Request):
     rows = c.execute("""SELECT u.id uid, u.scheduled, u.title, u.title_locked, u.formula, u.is_test, u.status, u.error,
                         b.name, b.genre FROM uploads u JOIN beats b ON b.id=u.beat_id
                         WHERE u.status IN ('scheduled','final','error') ORDER BY u.scheduled""").fetchall()
-    done = c.execute("SELECT done, title, formula FROM uploads WHERE status='uploaded' ORDER BY done DESC LIMIT 50").fetchall()
-    return page("queue", request, rows=rows, done=done)
+    done = c.execute("""SELECT u.done, u.title, u.formula, (SELECT views FROM upload_stats s WHERE s.upload_id=u.id
+                         ORDER BY measured DESC LIMIT 1) views FROM uploads u WHERE status='uploaded' ORDER BY done DESC LIMIT 50""").fetchall()
+    from app.maint.worker import formula_performance
+    return page("queue", request, rows=rows, done=done, perf=formula_performance(c))
 
 
 @app.post("/queue/{uid}/title")

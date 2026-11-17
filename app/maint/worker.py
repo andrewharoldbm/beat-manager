@@ -56,6 +56,35 @@ def propagate(conn):
         ON CONFLICT (artist_id, tag, source) DO UPDATE SET weight=EXCLUDED.weight, updated=now()""")
 
 
+def video_stats(conn):
+    key = os.environ.get("YT_API_KEY", "")
+    rows = conn.execute("SELECT id, external_id FROM uploads WHERE status='uploaded' AND external_id IS NOT NULL").fetchall()
+    for i in range(0, len(rows), 50):
+        chunk = rows[i:i + 50]
+        ids = ",".join(r["external_id"] for r in chunk)
+        try:
+            d = httpx.get("https://www.googleapis.com/youtube/v3/videos",
+                          params={"part": "statistics", "id": ids, "key": key}, timeout=30).json()
+        except Exception:
+            continue
+        by = {it["id"]: it.get("statistics", {}) for it in d.get("items", [])}
+        for r in chunk:
+            st = by.get(r["external_id"])
+            if st is not None:
+                conn.execute("INSERT INTO upload_stats(upload_id, views, likes, comments) VALUES (%s,%s,%s,%s)",
+                             (r["id"], int(st.get("viewCount", 0)), int(st.get("likeCount", 0)), int(st.get("commentCount", 0))))
+
+
+def formula_performance(conn):
+    """Average views per video at ~7 days old, per formula (used for testing decisions)."""
+    return conn.execute("""
+        SELECT u.formula, count(*) videos, round(avg(s.views)) avg_views
+        FROM uploads u JOIN LATERAL (SELECT views FROM upload_stats x WHERE x.upload_id=u.id
+             AND x.measured <= u.done + interval '8 days' ORDER BY measured DESC LIMIT 1) s ON true
+        WHERE u.status='uploaded' AND u.done < now()-interval '7 days'
+        GROUP BY u.formula ORDER BY avg_views DESC""").fetchall()
+
+
 def weekly_report(conn):
     a = conn.execute("""SELECT count(*) n, count(*) FILTER (WHERE first_seen > now()-interval '7 days') new,
                         count(last_scanned) s FROM artists""").fetchone()
@@ -76,6 +105,10 @@ def weekly_report(conn):
              f"Emails sent this week: {em['n']}, opened: {em['o']}, contacts who replied (total): {rep}", "",
              "Top Detroit/Flint niche opportunities (views/day, uploads last 30d):"]
     lines += [f"- {r['name']}: {r['vpd_med']:.0f}/day, {r['sup30']} uploads" for r in top] or ["- not enough data yet"]
+    perf = formula_performance(conn)
+    if perf:
+        lines += ["", "Title formulas (avg views after 7 days):"]
+        lines += [f"- {r['formula']}: {int(r['avg_views'])} views ({r['videos']} videos)" for r in perf[:8]]
     notify("\n".join(lines))
 
 
@@ -91,7 +124,7 @@ def run():
     conn = connect()
     ensure_schema(conn)
     log_event(conn, "info", "maint", "maintenance worker started")
-    last_prop = last_report = last_sec = None
+    last_prop = last_report = last_sec = last_stats = None
     while True:
         try:
             tag_lastfm(conn)
@@ -102,6 +135,9 @@ def run():
             if now.weekday() == 0 and now.hour == 8 and (not last_report or now - last_report > dt.timedelta(hours=20)):
                 weekly_report(conn)
                 last_report = now
+            if not last_stats or now - last_stats > dt.timedelta(hours=6):
+                video_stats(conn)
+                last_stats = now
             if not last_sec or now - last_sec > dt.timedelta(minutes=55):
                 security_checks(conn)
                 last_sec = now

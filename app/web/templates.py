@@ -66,7 +66,7 @@ Tag producers in file names with <code>@name</code>, BPM with <code>140bpm</code
 {% for b in beats %}<tr><td class="mut">{{b.id}}</td><td>{{b.name or b.original_name}}{% if b.needs_review %}<div class="warn">{{b.review_note}}</div>{% endif %}</td>
 <td>{{b.genre or ''}}</td><td>{{b.bpm or ''}}</td><td>{{b.musical_key or ''}}<div class="mut">{{b.key_alt or ''}}</div></td><td>{{b.tuning_hz or ''}}</td>
 <td>{{(b.producers or [])|join(' x ')}}</td><td><span class="pill">{{b.status}}</span></td>
-<td><form method="post" action="/beats/{{b.id}}/edit" class="row"><input name="genre" value="{{b.genre or ''}}" size=7><input name="bpm" value="{{b.bpm or ''}}" size=4><input name="key" value="{{b.musical_key or ''}}" size=8><button class="sec">Save</button></form></td></tr>{% endfor %}</table>
+<td><form method="post" action="/beats/{{b.id}}/edit" class="row"><input name="genre" value="{{b.genre or ''}}" size=7><input name="bpm" value="{{b.bpm or ''}}" size=4><input name="key" value="{{b.musical_key or ''}}" size=8><input name="bs" value="{{b.beatstars_url or ''}}" placeholder="BeatStars link" size=14><button class="sec">Save</button></form></td></tr>{% endfor %}</table>
 <script>
 async function up(){const d=document.getElementById('dir').files,f=document.getElementById('files').files,g=document.getElementById('genre').value;
 const all=[...d,...f];const p=document.getElementById('prog');let ok=0,bad=0;
@@ -87,8 +87,10 @@ Edit a title to lock it.</p>
 <td><form method="post" action="/queue/{{u.uid}}/move" class="row"><input type="datetime-local" name="when"><button class="sec">Move</button></form>
 <form method="post" action="/queue/{{u.uid}}/skip" class="inline"><button class="sec">Skip</button></form></td></tr>
 {% else %}<tr><td colspan=6 class="mut">Calendar is empty. Beats are scheduled once YouTube uploading is ON.</td></tr>{% endfor %}</table>
+<h2>Formula performance (avg views after 7 days)</h2>
+<table>{% for p in perf %}<tr><td>{{p.formula}}</td><td>{{p.avg_views|int}} views</td><td class="mut">{{p.videos}} videos</td></tr>{% else %}<tr><td class="mut">Not enough data yet</td></tr>{% endfor %}</table>
 <h2>Uploaded</h2>
-<table>{% for u in done %}<tr><td>{{u.done.strftime('%d %b %H:%M') if u.done}}</td><td>{{u.title}}</td><td class="mut">{{u.formula}}</td></tr>{% endfor %}</table>
+<table>{% for u in done %}<tr><td>{{u.done.strftime('%d %b %H:%M') if u.done}}</td><td>{{u.title}}</td><td class="mut">{{u.formula}}</td><td>{{u.views if u.views is not none else ''}}</td></tr>{% endfor %}</table>
 {% endblock %}"""
 
 RESEARCH = """{% extends 'base' %}{% block body %}
