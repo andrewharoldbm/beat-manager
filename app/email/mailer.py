@@ -96,6 +96,8 @@ def resend_targets(conn, limit):
           AND c.status='valid' AND NOT c.unsubscribed AND NOT c.replied AND """ + audience_sql(conn, "c") + """
           AND (c.last_sent IS NULL OR c.last_sent < now()-interval '6 days')
           AND NOT EXISTS (SELECT 1 FROM email_log r WHERE r.contact_id=c.id AND r.pack_id=l.pack_id AND r.kind='resend')
+          AND NOT EXISTS (SELECT 1 FROM email_packs p WHERE p.sent_at IS NOT NULL       -- only after they got every pack
+                          AND NOT EXISTS (SELECT 1 FROM email_log x WHERE x.contact_id=c.id AND x.pack_id=p.id))
         ORDER BY l.pack_id, c.id LIMIT %s""", (RESEND_MIN_DAYS, limit)).fetchall()
 
 
