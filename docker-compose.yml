@@ -55,7 +55,35 @@ services:
       db:
         condition: service_healthy
 
+  web:
+    build: .
+    restart: always
+    command: uvicorn app.web.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*'
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://beats:${DB_PASSWORD}@db:5432/beats
+    volumes:
+      - ./data/beats:/data/beats
+    depends_on:
+      db:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-155-133-197-189.sslip.io}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - web
+
 volumes:
+  caddy_data:
   secrets:
   renders:
   visuals:

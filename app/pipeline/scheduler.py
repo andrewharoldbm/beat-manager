@@ -17,13 +17,9 @@ import httpx
 from app.common.db import connect, is_killed, log_event, ensure_schema
 from app.pipeline import analyze as an, meta, render
 
-YT_ENABLED = os.environ.get("YT_ENABLED", "0") == "1"
-TG_CHANNEL_ENABLED = os.environ.get("TG_CHANNEL_ENABLED", "0") == "1"
-TG_CHANNEL_ID = os.environ.get("TG_CHANNEL_ID", "")
+from app.common import settings as S
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 OWNER = os.environ.get("OWNER_CHAT_ID", "")
-PER_DAY = int(os.environ.get("UPLOADS_PER_DAY", "1"))
-HOURS = [int(h) for h in os.environ.get("UPLOAD_HOURS_UTC", "16,22").split(",")][:max(PER_DAY, 1)]
 FINALIZE_BEFORE = dt.timedelta(hours=24)
 
 
@@ -62,11 +58,13 @@ def step_analyze(conn):
 
 
 def next_slots(conn, n):
+    per_day = int(S.get(conn, "uploads_per_day"))
+    hours = list(S.get(conn, "upload_hours_utc"))[:max(per_day, 1)]
     taken = {r["scheduled"] for r in conn.execute(
         "SELECT scheduled FROM uploads WHERE platform='youtube' AND scheduled > now()").fetchall()}
     slots, day = [], now().date()
     while len(slots) < n:
-        for h in HOURS:
+        for h in hours:
             t = dt.datetime(day.year, day.month, day.day, h, tzinfo=dt.timezone.utc)
             if t > now() + dt.timedelta(hours=1) and t not in taken:
                 slots.append(t)
@@ -75,7 +73,7 @@ def next_slots(conn, n):
 
 
 def step_schedule(conn):
-    if not YT_ENABLED:
+    if not S.get(conn, "yt_enabled"):
         return  # beats wait as 'analyzed' until YouTube uploading is switched on
     beats = conn.execute("""SELECT id, genre FROM beats WHERE status='analyzed'
                             AND id NOT IN (SELECT beat_id FROM uploads WHERE platform='youtube') ORDER BY id""").fetchall()
@@ -107,8 +105,9 @@ def step_finalize(conn):
             conn.execute("UPDATE uploads SET status='final' WHERE id=%s", (r["uid"],))
             continue
         artists, suffix, is_test = meta.pick_formula(formulas, r["genre"])
-        title = meta.make_title(artists, suffix, r["name"], meta.free_flag())
-        desc = meta.make_description(r, artists, suffix)
+        title = meta.make_title(artists, suffix, r["name"], meta.free_flag(S.get(conn, "free_tag")))
+        desc = meta.make_description(r, artists, suffix, telegram=S.get(conn, "telegram_channel_url"),
+                                     instagram=S.get(conn, "instagram_url"), beatstars_url=r.get("beatstars_url"))
         tags = meta.make_tags(artists, suffix)
         conn.execute("""UPDATE uploads SET title=%s, description=%s, tags=%s, formula=%s, is_test=%s, status='final'
                         WHERE id=%s""", (title, desc, tags, " x ".join(artists), is_test, r["uid"]))
@@ -118,6 +117,7 @@ def step_upload(conn):
     rows = conn.execute("""SELECT u.id uid, u.title, u.description, u.tags, u.scheduled, b.*
                            FROM uploads u JOIN beats b ON b.id=u.beat_id
                            WHERE u.platform='youtube' AND u.status='final' AND u.scheduled <= now()
+                             AND (u.next_try IS NULL OR u.next_try <= now())
                            ORDER BY u.scheduled LIMIT 1""").fetchall()
     for r in rows:
         try:
@@ -128,22 +128,29 @@ def step_upload(conn):
             conn.execute("UPDATE uploads SET status='uploaded', done=now(), external_id=%s WHERE id=%s", (vid, r["uid"]))
             conn.execute("UPDATE beats SET status='uploaded' WHERE id=%s", (r["id"],))
             notify(f"Uploaded to YouTube: {r['title']}")
-            if TG_CHANNEL_ENABLED and TG_CHANNEL_ID:
+            ch = S.get(conn, "tg_channel_id")
+            if S.get(conn, "tg_channel_enabled") and ch:
                 with open(r["file_path"], "rb") as f:
                     httpx.post(f"https://api.telegram.org/bot{TOKEN}/sendAudio",
-                               data={"chat_id": TG_CHANNEL_ID, "caption": r["title"],
+                               data={"chat_id": ch, "caption": r["title"],
                                      "title": r["name"], "performer": "prod. " + " x ".join(r["producers"] or [])},
                                files={"audio": (os.path.basename(r["file_path"]), f)}, timeout=120)
         except Exception as e:
-            conn.execute("UPDATE uploads SET error=%s WHERE id=%s", (str(e)[:500], r["uid"]))
+            row = conn.execute("""UPDATE uploads SET error=%s, attempts=attempts+1,
+                                   next_try=now() + interval '30 minutes' * (attempts+1)
+                                   WHERE id=%s RETURNING attempts""", (str(e)[:500], r["uid"])).fetchone()
             log_event(conn, "warn", "upload", f"{r['title']}: {e}")
-            notify(f"Upload problem: {r['title']}\n{str(e)[:200]}")
+            if row["attempts"] >= 4:
+                conn.execute("UPDATE uploads SET status='error' WHERE id=%s", (r["uid"],))
+                notify(f"Upload FAILED after 4 tries: {r['title']}\n{str(e)[:200]}\nThe next beat will continue as planned.")
+            elif row["attempts"] == 1:
+                notify(f"Upload problem (will retry): {r['title']}\n{str(e)[:200]}")
 
 
 def run():
     conn = connect()
     ensure_schema(conn)
-    log_event(conn, "info", "scheduler", f"scheduler started (youtube={'on' if YT_ENABLED else 'off'})")
+    log_event(conn, "info", "scheduler", "scheduler started")
     while True:
         try:
             if not is_killed(conn):

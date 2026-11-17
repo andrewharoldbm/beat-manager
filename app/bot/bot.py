@@ -74,7 +74,7 @@ def handle_audio(conn, msg):
     dest = os.path.join(INBOX, f"{int(time.time())}_{safe}")
     with open(dest, "wb") as f:
         f.write(data)
-    producers = re.findall(r"@([A-Za-z0-9_.$]+)", (msg.get("caption") or "") + " " + fname) or ["conkretus"]
+    producers = re.findall(r"@([A-Za-z0-9_$-]+)", (msg.get("caption") or "") + " " + fname) or ["conkretus"]
     caption = msg.get("caption") or ""
     genres = re.findall(r"#([A-Za-z0-9_-]+)", caption)
     conn.execute("INSERT INTO beats(file_path, original_name, producers, caption, genre) VALUES (%s,%s,%s,%s,%s)",

@@ -6,3 +6,12 @@ soundfile==0.12.1
 google-api-python-client==2.149.0
 google-auth-oauthlib==1.2.1
 google-auth==2.35.0
+fastapi==0.115.4
+uvicorn==0.32.0
+python-multipart==0.0.17
+jinja2==3.1.4
+itsdangerous==2.2.0
+pyotp==2.9.0
+argon2-cffi==23.1.0
+qrcode==8.0
+dnspython==2.7.0

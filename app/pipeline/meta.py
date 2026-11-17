@@ -23,9 +23,6 @@ DEFAULT_FORMULAS = {
     "scam": {"main": ["BabyTron", "Buddyy"], "suffix": "Detroit Type Beat",
              "tests": [["BabyTron", "Tone4s"]], "test_share": 0.25},
 }
-FREE_TAG = os.environ.get("TITLE_FREE_TAG", "test")  # "on" | "off" | "test"
-INSTAGRAM = os.environ.get("INSTAGRAM_URL", "instagram.com/conkretus")
-TELEGRAM = os.environ.get("TELEGRAM_CHANNEL_URL", "")
 
 
 def load_formulas(conn):
@@ -65,7 +62,7 @@ def make_title(artists, suffix, name, free: bool):
     return t[:100]
 
 
-def make_description(beat, artists, suffix, beatstars_url=None):
+def make_description(beat, artists, suffix, beatstars_url=None, telegram="", instagram="instagram.com/conkretus"):
     prods = " x ".join(beat["producers"] or ["conkretus"])
     hz = f"{beat['tuning_hz']:g}Hz" if beat.get("tuning_hz") else ""
     lines = [
@@ -74,9 +71,10 @@ def make_description(beat, artists, suffix, beatstars_url=None):
         "",
         f"💰 Buy / Lease: {beatstars_url or 'link coming soon'}",
     ]
-    if TELEGRAM:
-        lines.append(f"📲 Telegram: {TELEGRAM}")
-    lines.append(f"📸 Instagram: {INSTAGRAM}")
+    if telegram:
+        lines.append(f"📲 Telegram: {telegram}")
+    if instagram:
+        lines.append(f"📸 Instagram: {instagram}")
     lines += ["", "Free for non-profit use only. Credit: prod. by " + prods, ""]
     hashtags = ["#" + re.sub(r"[^A-Za-z0-9]", "", a.lower()) + "typebeat" for a in artists]
     if suffix:
@@ -104,9 +102,9 @@ def make_tags(artists, suffix, aliases=None):
     return out
 
 
-def free_flag():
-    if FREE_TAG == "on":
+def free_flag(mode="test"):
+    if mode == "on":
         return True
-    if FREE_TAG == "off":
+    if mode == "off":
         return False
     return random.random() < 0.5
