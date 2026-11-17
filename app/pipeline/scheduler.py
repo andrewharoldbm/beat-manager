@@ -24,11 +24,16 @@ FINALIZE_BEFORE = dt.timedelta(hours=24)
 
 
 
-def notify(text):
+GENRE_BUTTONS = ["detroit", "flint", "scam", "memphis", "chicago", "rage", "plugg", "other"]
+
+
+def notify(text, buttons=None):
     if TOKEN and OWNER:
+        body = {"chat_id": int(OWNER), "text": text, "disable_web_page_preview": True}
+        if buttons:
+            body["reply_markup"] = {"inline_keyboard": buttons}
         try:
-            httpx.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                       json={"chat_id": int(OWNER), "text": text, "disable_web_page_preview": True}, timeout=20)
+            httpx.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json=body, timeout=20)
         except Exception:
             pass
 
@@ -41,7 +46,8 @@ def step_analyze(conn):
     for b in conn.execute("SELECT * FROM beats WHERE status='new' ORDER BY id LIMIT 5").fetchall():
         try:
             r = an.analyze(b["file_path"], b["original_name"] or "", b["caption"] or "")
-            genre = b["genre"] or (r["genres"][0] if r["genres"] else None) or "detroit"
+            genre_given = b["genre"] or (r["genres"][0] if r["genres"] else None)
+            genre = genre_given or "detroit"
             conn.execute("""UPDATE beats SET bpm=%s, bpm_given=%s, musical_key=%s, key_alt=%s, tuning_hz=%s,
                             tuning_raw=%s, needs_review=%s, review_note=%s, genre=%s, name=%s, status='analyzed'
                             WHERE id=%s""",
@@ -51,7 +57,12 @@ def step_analyze(conn):
                    f"BPM {r['bpm']:g} | {r['musical_key']} (alt: {r['key_alt']}) | {r['tuning_hz']:g}Hz | genre: {genre}")
             if r["needs_review"]:
                 msg += f"\nCheck: {r['review_note']}"
-            notify(msg)
+            buttons = None
+            if not genre_given:
+                msg += "\nNo genre given, using detroit. Tap to change:"
+                buttons = [[{"text": g, "callback_data": f"genre:{b['id']}:{g}"} for g in GENRE_BUTTONS[i:i + 4]]
+                           for i in range(0, len(GENRE_BUTTONS), 4)]
+            notify(msg, buttons)
         except Exception as e:
             conn.execute("UPDATE beats SET status='error', review_note=%s WHERE id=%s", (str(e)[:300], b["id"]))
             notify(f"Could not analyze {b['original_name']}: {e}")

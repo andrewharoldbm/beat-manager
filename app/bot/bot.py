@@ -94,12 +94,21 @@ def run():
     pending = None  # ('kill'|'restore')
     while True:
         try:
-            r = c.get(f"{API}/getUpdates", params={"offset": offset, "timeout": 50}, timeout=60).json()
+            r = c.get(f"{API}/getUpdates", params={"offset": offset, "timeout": 50,
+                                                   "allowed_updates": '["message","callback_query"]'}, timeout=60).json()
         except Exception:
             time.sleep(5)
             continue
         for u in r.get("result", []):
             offset = u["update_id"] + 1
+            cq = u.get("callback_query")
+            if cq:
+                if cq.get("from", {}).get("id") == OWNER:
+                    m = re.fullmatch(r"genre:(\d+):([a-z_-]{2,20})", cq.get("data") or "")
+                    if m:
+                        conn.execute("UPDATE beats SET genre=%s WHERE id=%s", (m.group(2), int(m.group(1))))
+                        c.post(f"{API}/answerCallbackQuery", json={"callback_query_id": cq["id"], "text": f"Genre set: {m.group(2)}"})
+                continue
             msg = u.get("message") or {}
             if msg.get("chat", {}).get("id") != OWNER:
                 continue  # ignore everyone else
@@ -128,6 +137,14 @@ def run():
             elif text == "/review":
                 rows = conn.execute("SELECT name, review_note FROM beats WHERE needs_review ORDER BY id DESC LIMIT 10").fetchall()
                 send("Needs review:\n" + ("\n".join(f"{r['name']}: {r['review_note']}" for r in rows) or "nothing"))
+            elif text in ("/pause", "/resume"):
+                from app.common import settings as S
+                S.set_(conn, "yt_enabled", text == "/resume")
+                send("YouTube uploading " + ("RESUMED." if text == "/resume" else "PAUSED. Beats keep being analyzed."))
+            elif text == "/help":
+                send("Commands:\n/status - system state\n/queue - next uploads\n/review - beats to check\n"
+                     "/pause, /resume - YouTube uploading\n/kill, /restore - emergency stop (PIN)\n"
+                     "Send an mp3/wav with a caption like: #detroit @conkretus @rsd")
             elif text == "/kill":
                 pending = "kill"
                 send("Send your PIN to confirm KILL.")
