@@ -15,7 +15,8 @@ HEADERS = {
 }
 FILTER_MONTH = "EgIIBA%3D%3D"
 _client = httpx.Client(headers=HEADERS, timeout=20, follow_redirects=True,
-                       cookies={"CONSENT": "YES+1", "PREF": "hl=en&gl=US"})
+                       cookies={"CONSENT": "YES+cb.20240101-00-p0.en+FX+999", "SOCS": "CAI", "PREF": "hl=en&gl=US"})
+LAST_STATUS = {"reason": ""}
 
 
 def _num(text: str) -> int:
@@ -87,9 +88,14 @@ def search(query: str, sp: str | None = None, retries: int = 3):
             if r.status_code == 429:
                 time.sleep(60 * (attempt + 1))
                 continue
+            if "consent.youtube.com" in str(r.url) or "consent.google" in r.text[:5000]:
+                LAST_STATUS["reason"] = "consent page"
+                return []
             m = re.search(r"var ytInitialData = (\{.*?\});</script>", r.text, re.S)
             if not m:
+                LAST_STATUS["reason"] = f"no data (HTTP {r.status_code})"
                 return []
+            LAST_STATUS["reason"] = ""
             out = []
             _walk(json.loads(m.group(1)), out)
             return out

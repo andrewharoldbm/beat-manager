@@ -108,7 +108,7 @@ def run():
         mon = youtube.search(q, youtube.FILTER_MONTH)
         if not rel and not mon:
             # possibly blocked: back off
-            log_event(conn, "warn", "scanner", f"empty results for {a['name']}, backing off")
+            log_event(conn, "warn", "scanner", f"empty results for {a['name']} ({youtube.LAST_STATUS['reason'] or 'no matches'}), backing off")
             time.sleep(600)
         m = measure(a["name"], rel, mon)
         conn.execute("""INSERT INTO yt_metrics(artist_id, rel_n, sup7, sup30, vpd_med, vpd_top, med_month, top5_avg)
