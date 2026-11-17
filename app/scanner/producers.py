@@ -111,7 +111,7 @@ def find_emails(conn, batch=5):
     return n
 
 
-def step(conn, artists=4, emails=5):
+def step(conn, artists=8, emails=10):
     for a in conn.execute("""SELECT * FROM artists WHERE producers_checked IS NULL
                                AND (coalesce(discovered_via,'') <> 'yt_title' OR title_mentions >= 3)
                              ORDER BY priority, id LIMIT %s""", (artists,)).fetchall():

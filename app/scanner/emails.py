@@ -55,7 +55,7 @@ def tag_contacts(conn):
             conn.execute("UPDATE contacts SET tags=%s WHERE id=%s", (t, c["id"]))
 
 
-def step(conn, batch=15):
+def step(conn, batch=20):
     """Priority artists with demand first; each artist checked once a quarter."""
     rows = conn.execute("""
         SELECT a.* FROM artists a
