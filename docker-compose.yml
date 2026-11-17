@@ -55,6 +55,21 @@ services:
       db:
         condition: service_healthy
 
+  mailer:
+    build: .
+    restart: always
+    command: python -m app.email.mailer
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://beats:${DB_PASSWORD}@db:5432/beats
+    volumes:
+      - ./data/beats:/data/beats
+      - secrets:/data/secrets
+      - renders:/data/renders
+    depends_on:
+      db:
+        condition: service_healthy
+
   web:
     build: .
     restart: always

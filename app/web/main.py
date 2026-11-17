@@ -36,7 +36,7 @@ def page(name, request, **ctx):
 @app.middleware("http")
 async def guard(request: Request, call_next):
     path = request.url.path
-    if path not in ("/login", "/health") and not auth.valid_session(db(), request.cookies.get(COOKIE)):
+    if path not in ("/login", "/health") and not path.startswith("/o/") and not auth.valid_session(db(), request.cookies.get(COOKIE)):
         if path.startswith("/api/"):
             return JSONResponse({"error": "auth"}, status_code=401)
         return RedirectResponse("/login", status_code=303)
@@ -46,6 +46,21 @@ async def guard(request: Request, call_next):
     resp.headers["Referrer-Policy"] = "no-referrer"
     resp.headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:"
     return resp
+
+
+PIXEL = bytes.fromhex("47494638396101000100800000000000ffffff21f90401000000002c00000000010001000002024401003b")
+
+
+@app.get("/o/{tok}.gif")
+def opened(tok: str):
+    from fastapi.responses import Response
+    if re.fullmatch(r"[A-Za-z0-9_-]{8,40}", tok):
+        c = db()
+        row = c.execute("UPDATE email_log SET status='opened:'||%s WHERE status=%s RETURNING contact_id",
+                        (tok, "sent:" + tok)).fetchone()
+        if row:
+            c.execute("UPDATE contacts SET opened_count=opened_count+1 WHERE id=%s", (row["contact_id"],))
+    return Response(PIXEL, media_type="image/gif", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/health")
