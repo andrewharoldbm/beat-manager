@@ -104,6 +104,16 @@ def run():
             cq = u.get("callback_query")
             if cq:
                 if cq.get("from", {}).get("id") == OWNER:
+                    pm = re.fullmatch(r"prop:(\d+):(yes|no)", cq.get("data") or "")
+                    if pm:
+                        p = conn.execute("SELECT * FROM proposals WHERE id=%s AND status='open'", (int(pm.group(1)),)).fetchone()
+                        if p and pm.group(2) == "yes":
+                            from app.maint.worker import apply_proposal
+                            apply_proposal(conn, p)
+                        elif p:
+                            conn.execute("UPDATE proposals SET status='rejected', decided=now() WHERE id=%s", (p["id"],))
+                        c.post(f"{API}/answerCallbackQuery", json={"callback_query_id": cq["id"], "text": "Done" if p else "Already decided"})
+                        continue
                     m = re.fullmatch(r"genre:(\d+):([a-z_-]{2,20})", cq.get("data") or "")
                     if m:
                         conn.execute("UPDATE beats SET genre=%s WHERE id=%s", (m.group(2), int(m.group(1))))

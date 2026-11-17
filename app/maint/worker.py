@@ -12,11 +12,13 @@ TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 OWNER = os.environ.get("OWNER_CHAT_ID", "")
 
 
-def notify(text):
+def notify(text, buttons=None):
     if TOKEN and OWNER:
+        body = {"chat_id": int(OWNER), "text": text, "disable_web_page_preview": True}
+        if buttons:
+            body["reply_markup"] = {"inline_keyboard": buttons}
         try:
-            httpx.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                       json={"chat_id": int(OWNER), "text": text, "disable_web_page_preview": True}, timeout=20)
+            httpx.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", json=body, timeout=20)
         except Exception:
             pass
 
@@ -78,11 +80,58 @@ def video_stats(conn):
 def formula_performance(conn):
     """Average views per video at ~7 days old, per formula (used for testing decisions)."""
     return conn.execute("""
-        SELECT u.formula, count(*) videos, round(avg(s.views)) avg_views
+        SELECT u.formula, count(*) videos, round(avg(s.views))::float avg_views
         FROM uploads u JOIN LATERAL (SELECT views FROM upload_stats x WHERE x.upload_id=u.id
              AND x.measured <= u.done + interval '8 days' ORDER BY measured DESC LIMIT 1) s ON true
         WHERE u.status='uploaded' AND u.done < now()-interval '7 days'
         GROUP BY u.formula ORDER BY avg_views DESC""").fetchall()
+
+
+def apply_proposal(conn, p):
+    from app.pipeline import meta
+    from app.common import settings as S
+    f = meta.load_formulas(conn)
+    pl = p["payload"]
+    g = p["genre"]
+    if p["kind"] == "promote_test" and g in f:
+        old_main = f[g]["main"]
+        f[g]["main"] = pl["new_main"]
+        f[g]["tests"] = [t for t in f[g].get("tests", []) if t != pl["new_main"]] + [old_main]
+        S.set_(conn, "formulas", f)
+    conn.execute("UPDATE proposals SET status='applied', decided=now() WHERE id=%s", (p["id"],))
+    log_event(conn, "info", "autopilot", f"applied proposal {p['id']}: {p['text']}")
+
+
+def check_tests(conn):
+    """Promote a test formula if it clearly beats the main one (>=5 videos each, +20% avg views at 7 days)."""
+    from app.pipeline import meta
+    from app.common import settings as S
+    perf = {r["formula"]: r for r in formula_performance(conn)}
+    f = meta.load_formulas(conn)
+    for g, cfg in f.items():
+        main = " x ".join(cfg["main"])
+        m = perf.get(main)
+        if not m or m["videos"] < 5:
+            continue
+        for t in cfg.get("tests", []):
+            tp = perf.get(" x ".join(t))
+            if tp and tp["videos"] >= 5 and tp["avg_views"] > m["avg_views"] * 1.2:
+                exists = conn.execute("SELECT 1 FROM proposals WHERE status='open' AND genre=%s", (g,)).fetchone()
+                if exists:
+                    break
+                text = (f"[{g}] Test formula '{' x '.join(t)}' gets {int(tp['avg_views'])} avg views vs main "
+                        f"'{main}' {int(m['avg_views'])}. Make it the main formula?")
+                row = conn.execute("INSERT INTO proposals(kind, genre, payload, text) VALUES ('promote_test',%s,%s::jsonb,%s) RETURNING id",
+                                   (g, __import__('json').dumps({"new_main": t}), text)).fetchone()
+                hrs = int(S.get(conn, "autopilot_hours"))
+                notify(text + f"\nIf you don't answer in {hrs}h, autopilot applies it.",
+                       [[{"text": "Approve", "callback_data": f"prop:{row['id']}:yes"},
+                         {"text": "Reject", "callback_data": f"prop:{row['id']}:no"}]])
+                break
+    hrs = int(S.get(conn, "autopilot_hours"))
+    for p in conn.execute("SELECT * FROM proposals WHERE status='open' AND created < now() - make_interval(hours => %s)", (hrs,)).fetchall():
+        apply_proposal(conn, p)
+        notify(f"Autopilot applied: {p['text']}")
 
 
 def weekly_report(conn):
@@ -137,6 +186,7 @@ def run():
                 last_report = now
             if not last_stats or now - last_stats > dt.timedelta(hours=6):
                 video_stats(conn)
+                check_tests(conn)
                 last_stats = now
             if not last_sec or now - last_sec > dt.timedelta(minutes=55):
                 security_checks(conn)
