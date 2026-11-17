@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: beats
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: beats
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beats"]
+      interval: 10s
+      retries: 10
+
+  scanner:
+    build: .
+    restart: always
+    command: python -m app.scanner.worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://beats:${DB_PASSWORD}@db:5432/beats
+    depends_on:
+      db:
+        condition: service_healthy
+
+  bot:
+    build: .
+    restart: always
+    command: python -m app.bot.bot
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://beats:${DB_PASSWORD}@db:5432/beats
+    volumes:
+      - ./data/beats:/data/beats
+    depends_on:
+      db:
+        condition: service_healthy
