@@ -39,8 +39,9 @@ def render(audio_path: str, name: str, genre: str | None, beat_id: int) -> str:
     safe = name.replace("'", "").replace(":", " ")[:40]
     if img:
         vin = ["-loop", "1", "-i", img]
-        vf = (f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},"
-              f"format=yuv420p")
+        # fit the whole cover (usually 1:1) and add black bars on the sides
+        vf = (f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
+              f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,format=yuv420p")
     else:
         vin = ["-f", "lavfi", "-i", f"color=c=0x0d0d0d:s={w}x{h}"]
         vf = (f"drawtext=fontfile={FONT}:text='{safe}':fontcolor=white:fontsize={int(h/14)}:"
