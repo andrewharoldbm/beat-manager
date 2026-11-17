@@ -18,8 +18,9 @@ DEFAULTS = {
     "autopilot_hours": 72,
     "artist_bpm": None,
     # drafts - to be reviewed with the owner before emails are switched on
-    "email_subjects": ["new beats", "few new beats", "beats for you", "some new ones"],
-    "email_subjects_resend": ["in case you missed these", "these are still available", "beats from last time"],
+    "email_subjects": ["fresh stuff", "fresh beats"],
+    "email_body": "yoo, sending you some fresh stuff",
+    "email_signature": "conkretus\n\nall beats are tagged. leases $60 (mp3), credit: prod. by conkretus.\nfor untagged files or exclusives just reply to this email.\nreply \"stop\" and I won't send more.",
 }
 
 

@@ -164,7 +164,8 @@ SETTINGS = """{% extends 'base' %}{% block body %}
 <label>Beats per email pack <input name="email_pack_size" value="{{s.email_pack_size}}" size=3></label>
 <label>Max emails per day <input name="email_daily_limit" value="{{s.email_daily_limit}}" size=4></label>
 <label>Email subjects (one per line, picked at random)<textarea name="email_subjects" style="min-height:90px">{{subj}}</textarea></label>
-<label>Re-send subjects (for people who didn't open)<textarea name="email_subjects_resend" style="min-height:70px">{{subj_re}}</textarea></label>
+<label>Email text<textarea name="email_body" style="min-height:60px">{{body}}</textarea></label>
+<label>Signature + disclaimer<textarea name="email_signature" style="min-height:110px">{{sig}}</textarea></label>
 <label>Title formulas (JSON)<textarea name="formulas">{{formulas}}</textarea></label>
 <label>Artist BPM ranges (beats outside the range won't get that artist in the title; half/double time counts)
 <textarea name="artist_bpm" style="min-height:120px">{{artist_bpm}}</textarea></label>

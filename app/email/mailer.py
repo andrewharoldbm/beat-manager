@@ -76,16 +76,10 @@ def pack_files(conn, pack_id):
     return out
 
 
-def compose(files, contact, track_token):
-    first = (contact["name"] or "").split(" ")[0]
-    lines = [f"yo{(' ' + first) if first else ''},", "",
-             f"sending you {len(files)} new beats, mp3s attached so you can play them right here:", ""]
-    for b, _, _ in files:
-        lines.append(f"- {b['name']}  |  {int(b['bpm'] or 0)} BPM  |  {b['musical_key'] or ''}  |  prod. {' x '.join(b['producers'] or ['conkretus'])}")
-    lines += ["", "if anything fits, reply and we'll lock it in.", "", "conkretus", "",
-              "(reply \"stop\" and I won't send more)"]
+def compose(conn, files, contact, track_token):
+    lines = [S.get(conn, "email_body"), "", S.get(conn, "email_signature")]
     text = "\n".join(lines)
-    html = "<br>".join(l.replace("<", "&lt;") for l in lines) + \
+    html = "<br>".join(l.replace("<", "&lt;") for l in text.split("\n")) + \
         f'<img src="{PUBLIC_URL}/o/{track_token}.gif" width="1" height="1" alt="">'
     return text, html
 
@@ -138,7 +132,7 @@ def send_due(conn, svc):
     for c, pid, kind in jobs:
         files = files_cache.setdefault(pid, pack_files(conn, pid))
         tok = secrets.token_urlsafe(12)
-        text, html = compose(files, c, tok)
+        text, html = compose(conn, files, c, tok)
         subject = pick_subject(conn, kind)
         try:
             r = gmail.send(svc, c["email"], subject, text, html, [(f, n) for _, f, n in files])
@@ -151,9 +145,8 @@ def send_due(conn, svc):
 
 
 def pick_subject(conn, kind):
-    key = "email_subjects_resend" if kind == "resend" else "email_subjects"
-    opts = S.get(conn, key) or ["beats"]
-    return random.choice(opts)
+    # re-sends look exactly like a new pack
+    return random.choice(S.get(conn, "email_subjects") or ["fresh beats"])
 
 
 def read_replies(conn, svc):
