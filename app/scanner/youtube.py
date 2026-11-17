@@ -50,6 +50,8 @@ def _walk(o, out):
         if "videoRenderer" in o:
             v = o["videoRenderer"]
             out.append({
+                "id": v.get("videoId"),
+                "ch": ((v.get("ownerText") or {}).get("runs") or [{}])[0].get("text", ""),
                 "t": (v.get("title", {}).get("runs") or [{}])[0].get("text", ""),
                 "views": _num(v.get("viewCountText", {}).get("simpleText", "0")),
                 "age": _age_days(v.get("publishedTimeText", {}).get("simpleText", "")),
@@ -69,7 +71,13 @@ def _walk(o, out):
                             views = _num(txt)
                         elif re.search(r"ago", lab, re.I):
                             age = _age_days(txt)
-                out.append({"t": (md.get("title") or {}).get("content", ""), "views": views, "age": age})
+                ch = ""
+                try:
+                    ch = rows[0]["metadataParts"][0]["text"]["content"]
+                except Exception:
+                    pass
+                out.append({"id": l.get("contentId"), "ch": ch,
+                            "t": (md.get("title") or {}).get("content", ""), "views": views, "age": age})
             return
         for v in o.values():
             _walk(v, out)
@@ -102,3 +110,14 @@ def search(query: str, sp: str | None = None, retries: int = 3):
         except Exception:
             time.sleep(5 + random.random() * 5)
     return []
+
+
+def description(video_id: str) -> str:
+    r = _client.get(f"https://www.youtube.com/watch?v={video_id}")
+    m = re.search(r'"shortDescription":"((?:[^"\\]|\\.)*)"', r.text)
+    if not m:
+        return ""
+    try:
+        return json.loads('"' + m.group(1) + '"')
+    except Exception:
+        return m.group(1)

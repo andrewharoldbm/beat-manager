@@ -271,7 +271,7 @@ def run():
     conn = connect()
     ensure_schema(conn)
     log_event(conn, "info", "maint", "maintenance worker started")
-    last_prop = last_report = last_sec = last_stats = None
+    last_prop = last_report = last_sec = last_stats = last_mail = None
     while True:
         try:
             tag_lastfm(conn)
@@ -287,6 +287,13 @@ def run():
                 check_tests(conn)
                 check_niches(conn)
                 last_stats = now
+            if not last_mail or now - last_mail > dt.timedelta(minutes=30):
+                from app.scanner import emails as EM
+                EM.tag_contacts(conn)
+                EM.step(conn)
+                from app.email.contacts import verify_pending
+                verify_pending(conn)
+                last_mail = now
             if not last_sec or now - last_sec > dt.timedelta(minutes=55):
                 security_checks(conn)
                 try:
