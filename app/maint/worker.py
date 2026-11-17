@@ -182,6 +182,44 @@ def check_niches(conn):
                  {"text": "Reject", "callback_data": f"prop:{row['id']}:no"}]])
 
 
+def youtube_watch(conn):
+    """Detect channel changes or videos not uploaded by the system (possible account compromise)."""
+    from app.common import settings as S
+    try:
+        from app.pipeline.youtube_api import service
+        yt = service()
+    except Exception:
+        return
+    if not yt:
+        return
+    ch = yt.channels().list(part="snippet,contentDetails,statistics", mine=True).execute().get("items", [])
+    if not ch:
+        return
+    ch = ch[0]
+    snap = {"title": ch["snippet"].get("title"), "custom_url": ch["snippet"].get("customUrl"),
+            "description": ch["snippet"].get("description", "")[:500]}
+    base = S.get(conn, "yt_baseline")
+    if base and base != snap:
+        changed = [k for k in snap if snap[k] != base.get(k)]
+        notify(f"SECURITY: YouTube channel {', '.join(changed)} changed. If this wasn't you, send /kill now "
+               f"and change your Google password.")
+        log_event(conn, "alert", "security", f"youtube channel changed: {changed}")
+    S.set_(conn, "yt_baseline", snap)
+    uploads_pl = ch["contentDetails"]["relatedPlaylists"]["uploads"]
+    items = yt.playlistItems().list(part="contentDetails", playlistId=uploads_pl, maxResults=25).execute().get("items", [])
+    ours = {r["external_id"] for r in conn.execute("SELECT external_id FROM uploads WHERE external_id IS NOT NULL").fetchall()}
+    known = set(S.get(conn, "yt_known_foreign") or [])
+    for it in items:
+        vid = it["contentDetails"]["videoId"]
+        if vid not in ours and vid not in known:
+            if base:  # skip the very first run (old private videos)
+                notify("SECURITY: a video appeared on the channel that the system did not upload. "
+                       "If this wasn't you, send /kill and change your Google password.")
+                log_event(conn, "alert", "security", f"foreign video {vid}")
+            known.add(vid)
+    S.set_(conn, "yt_known_foreign", sorted(known))
+
+
 def weekly_report(conn):
     a = conn.execute("""SELECT count(*) n, count(*) FILTER (WHERE first_seen > now()-interval '7 days') new,
                         count(last_scanned) s FROM artists""").fetchone()
@@ -239,6 +277,10 @@ def run():
                 last_stats = now
             if not last_sec or now - last_sec > dt.timedelta(minutes=55):
                 security_checks(conn)
+                try:
+                    youtube_watch(conn)
+                except Exception as e:
+                    log_event(conn, "warn", "security", f"youtube watch failed: {str(e)[:200]}")
                 last_sec = now
         except Exception:
             log_event(conn, "warn", "maint", traceback.format_exc()[-500:])

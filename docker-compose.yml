@@ -34,6 +34,7 @@ services:
       DATABASE_URL: postgresql://beats:${DB_PASSWORD}@db:5432/beats
     volumes:
       - ./data/beats:/data/beats
+      - secrets:/data/secrets
     depends_on:
       db:
         condition: service_healthy
@@ -77,6 +78,8 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://beats:${DB_PASSWORD}@db:5432/beats
+    volumes:
+      - secrets:/data/secrets
     depends_on:
       db:
         condition: service_healthy

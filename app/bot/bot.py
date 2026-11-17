@@ -34,6 +34,23 @@ def send(text: str):
                                             "disable_web_page_preview": True})
 
 
+def revoke_google_tokens():
+    """KILL: revoke Google OAuth tokens and move token files aside so nothing can act on the accounts."""
+    import json, glob
+    done = []
+    for path in glob.glob("/data/secrets/*_token.json"):
+        try:
+            tok = json.load(open(path))
+            for t in (tok.get("refresh_token"), tok.get("token")):
+                if t:
+                    c.post("https://oauth2.googleapis.com/revoke", params={"token": t}, timeout=20)
+            os.replace(path, path + ".revoked")
+            done.append(os.path.basename(path))
+        except Exception:
+            pass
+    return done
+
+
 def pin_ok(pin: str) -> bool:
     return bool(PIN_HASH) and hashlib.sha256(pin.strip().encode()).hexdigest() == PIN_HASH
 
@@ -127,10 +144,13 @@ def run():
                 if pin_ok(text):
                     killed = pending == "kill"
                     conn.execute("UPDATE settings SET value=%s::jsonb WHERE key='killed'", ("true" if killed else "false",))
+                    if killed:
+                        revoked = revoke_google_tokens()
+                        log_event(conn, "alert", "kill", f"revoked: {revoked}")
                     log_event(conn, "alert", pending, f"{pending} executed by owner")
                     send("KILL executed: all jobs stopped. Next steps:\n1. Change your Google passwords\n"
                          "2. Remove unknown devices in Google account security\n3. Revoke app access in Google account permissions\n"
-                         "4. When safe, send /restore" if killed else "RESTORE done: system resumed.")
+                         "4. When safe, send /restore, then log in to YouTube/Gmail again on the server" if killed else "RESTORE done: system resumed. Google logins must be redone (auth_google.py).")
                 else:
                     send("Wrong PIN.")
                 pending = None
