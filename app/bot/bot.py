@@ -73,11 +73,16 @@ def status(conn):
             f"State: {'STOPPED (kill)' if k is True else 'running'}\n"
             f"Artists in DB: {a['n']} (scanned: {a['s']})\n"
             f"Measurements last 24h: {m['n']}\n"
-            f"Beats: {b['n']}\n\n"
-            f"Artist emails: {e['art']} ({e['art_ok']} verified, +{e['art_new']} last 24h), artists checked: {ac}\n"
-            f"Producer emails: {e['prod']} ({e['prod_ok']} verified, +{e['prod_new']} last 24h)\n"
-            f"Producers found via Genius: {pr['n']} (searched for email: {pr['c']})\n"
-            f"My uploaded list: {e['own']}")
+            f"Beats: {b['n']}\n\n\n"
+            f"Artist emails\n"
+            f"Collected: {e['art']} (verified: {e['art_ok']})\n"
+            f"New last 24h: {e['art_new']}\n"
+            f"Artists checked: {ac}\n\n\n"
+            f"Producer emails\n"
+            f"Collected: {e['prod']} (verified: {e['prod_ok']})\n"
+            f"New last 24h: {e['prod_new']}\n"
+            f"Producers found: {pr['n']} (checked: {pr['c']})\n\n\n"
+            f"My list: {e['own']}")
 
 
 def handle_audio(conn, msg):
