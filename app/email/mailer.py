@@ -93,7 +93,7 @@ def resend_targets(conn, limit):
     return conn.execute("""
         SELECT c.*, l.pack_id FROM email_log l JOIN contacts c ON c.id=l.contact_id
         WHERE l.kind='first' AND l.status NOT LIKE 'opened%%' AND l.sent_at < now() - make_interval(days => %s)
-          AND c.status='valid' AND NOT c.unsubscribed AND NOT c.replied
+          AND c.status='valid' AND NOT c.unsubscribed AND NOT c.replied AND """ + audience_sql(conn, "c") + """
           AND (c.last_sent IS NULL OR c.last_sent < now()-interval '6 days')
           AND NOT EXISTS (SELECT 1 FROM email_log r WHERE r.contact_id=c.id AND r.pack_id=l.pack_id AND r.kind='resend')
         ORDER BY l.pack_id, c.id LIMIT %s""", (RESEND_MIN_DAYS, limit)).fetchall()
@@ -116,6 +116,16 @@ def daily_limit(conn):
     return lim
 
 
+def audience_sql(conn, alias=""):
+    a = alias + "." if alias else ""
+    parts = []
+    if S.get(conn, "email_send_own"):
+        parts.append(f"coalesce({a}source,'') NOT LIKE 'yt:%%'")
+    if S.get(conn, "email_send_found"):
+        parts.append(f"{a}source LIKE 'yt:%%'")
+    return "(" + (" OR ".join(parts) or "false") + ")"
+
+
 def send_due(conn, svc):
     now = dt.datetime.now(dt.timezone.utc)
     if now.weekday() == int(S.get(conn, "email_weekday")):
@@ -136,7 +146,7 @@ def send_due(conn, svc):
     jobs = []  # (contact, pack_id, kind)
     pack = conn.execute("SELECT id FROM email_packs WHERE sent_at IS NOT NULL ORDER BY sent_at DESC LIMIT 1").fetchone()
     if pack:
-        for c in conn.execute("""SELECT * FROM contacts WHERE status='valid' AND NOT unsubscribed
+        for c in conn.execute("""SELECT * FROM contacts WHERE status='valid' AND NOT unsubscribed AND """ + audience_sql(conn) + """
                                  AND id NOT IN (SELECT contact_id FROM email_log WHERE pack_id=%s)
                                  AND (last_sent IS NULL OR last_sent < now()-interval '6 days')
                                  ORDER BY replied DESC, opened_count DESC, id LIMIT %s""", (pack["id"], budget)).fetchall():

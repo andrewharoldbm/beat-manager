@@ -12,6 +12,8 @@ DEFAULTS = {
     "upload_hours_utc": [int(h) for h in os.environ.get("UPLOAD_HOURS_UTC", "16,22").split(",")],
     "free_tag": os.environ.get("TITLE_FREE_TAG", "test"),
     "email_enabled": False,
+    "email_send_own": True,
+    "email_send_found": False,
     "email_pack_size": 5,
     "email_weekday": 1,          # Tuesday (0=Mon)
     "email_daily_limit": 360,   # target after warm-up (~2500/week)

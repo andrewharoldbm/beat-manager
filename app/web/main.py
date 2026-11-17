@@ -247,11 +247,16 @@ def research(request: Request, q: str = "", maxsup: str = "", minvpd: str = "", 
 
 
 @app.get("/contacts", response_class=HTMLResponse)
-def contacts(request: Request):
+def contacts(request: Request, list: str = "own"):
     c = db()
-    stats = c.execute("SELECT status, count(*) n FROM contacts GROUP BY status ORDER BY 2 DESC").fetchall()
-    rows = c.execute("SELECT * FROM contacts ORDER BY replied DESC, opened_count DESC, id DESC LIMIT 500").fetchall()
-    return page("contacts", request, stats=[(r["status"], r["n"]) for r in stats], rows=rows)
+    grp = "found" if list == "found" else "own"
+    cond = "source LIKE 'yt:%%'" if grp == "found" else "coalesce(source,'') NOT LIKE 'yt:%%'"
+    stats = c.execute(f"SELECT status, count(*) n FROM contacts WHERE {cond} GROUP BY status ORDER BY 2 DESC").fetchall()
+    rows = c.execute(f"SELECT * FROM contacts WHERE {cond} ORDER BY replied DESC, opened_count DESC, id DESC LIMIT 500").fetchall()
+    counts = c.execute("""SELECT count(*) FILTER (WHERE coalesce(source,'') NOT LIKE 'yt:%%') own,
+                                 count(*) FILTER (WHERE source LIKE 'yt:%%') found FROM contacts""").fetchone()
+    return page("contacts", request, stats=[(r["status"], r["n"]) for r in stats], rows=rows, grp=grp, counts=counts,
+                send_own=S.get(c, "email_send_own"), send_found=S.get(c, "email_send_found"))
 
 
 @app.post("/contacts/import")
@@ -292,7 +297,8 @@ def events(request: Request):
 
 
 SETTING_KEYS = ["yt_enabled", "tg_channel_enabled", "tg_channel_id", "telegram_channel_url", "instagram_url",
-                "uploads_per_day", "upload_hours_utc", "free_tag", "email_enabled", "email_pack_size", "email_daily_limit"]
+                "uploads_per_day", "upload_hours_utc", "free_tag", "email_enabled", "email_pack_size", "email_daily_limit",
+                "email_send_own", "email_send_found"]
 
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -330,6 +336,8 @@ async def settings_save(request: Request):
     S.set_(c, "yt_enabled", "yt_enabled" in f)
     S.set_(c, "tg_channel_enabled", "tg_channel_enabled" in f)
     S.set_(c, "email_enabled", "email_enabled" in f)
+    S.set_(c, "email_send_own", "email_send_own" in f)
+    S.set_(c, "email_send_found", "email_send_found" in f)
     S.set_(c, "tg_channel_id", (f.get("tg_channel_id") or "").strip())
     S.set_(c, "telegram_channel_url", (f.get("telegram_channel_url") or "").strip())
     S.set_(c, "instagram_url", (f.get("instagram_url") or "").strip())

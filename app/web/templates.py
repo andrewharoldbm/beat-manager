@@ -135,6 +135,10 @@ RESEARCH = """{% extends 'base' %}{% block body %}
 
 CONTACTS = """{% extends 'base' %}{% block body %}
 <h1>Contacts</h1>
+<div class="row" style="gap:8px;margin-bottom:12px">
+<a class="pill {{'ok' if grp=='own'}}" href="/contacts?list=own">My list ({{counts.own}}) {{'· sending' if send_own else '· not sending'}}</a>
+<a class="pill {{'ok' if grp=='found'}}" href="/contacts?list=found">Found by system ({{counts.found}}) {{'· sending' if send_found else '· not sending'}}</a></div>
+{% if grp=='found' %}<p class="mut">Public business emails found in artists' own YouTube descriptions. Only verified (valid) ones are ever emailed, and only when "Send to found contacts" is ON in Settings.</p>{% endif %}
 <div class="grid">{% for s,n in stats %}<div class="card"><div class="mut">{{s}}</div><div class="big">{{n}}</div></div>{% endfor %}</div>
 <h2>Import</h2>
 <form method="post" action="/contacts/import" class="card">
@@ -161,6 +165,8 @@ SETTINGS = """{% extends 'base' %}{% block body %}
 <label>Upload hours (UTC, comma separated) <input name="upload_hours_utc" value="{{s.upload_hours_utc|join(',')}}" size=10></label>
 <label>[FREE] in titles <select name="free_tag">{% for v in ['test','on','off'] %}<option {{'selected' if s.free_tag==v}}>{{v}}</option>{% endfor %}</select></label>
 <label><input type="checkbox" name="email_enabled" {{'checked' if s.email_enabled}}> Weekly email packs ON</label>
+<label><input type="checkbox" name="email_send_own" {{'checked' if s.email_send_own}}> Send to my uploaded list</label>
+<label><input type="checkbox" name="email_send_found" {{'checked' if s.email_send_found}}> Send to contacts found by the system (verified only)</label>
 <label>Beats per email pack <input name="email_pack_size" value="{{s.email_pack_size}}" size=3></label>
 <label>Emails per day target (starts at 30, +15/day warm-up) <input name="email_daily_limit" value="{{s.email_daily_limit}}" size=4></label>
 <label>Email subjects (one per line, picked at random)<textarea name="email_subjects" style="min-height:90px">{{subj}}</textarea></label>
