@@ -9,15 +9,32 @@ from app.common.db import norm_key, log_event
 from app.scanner import youtube
 from app.scanner.emails import EMAIL_RE, JUNK, same_artist, artist_tags
 
+import os
+TOKEN = os.environ.get("GENIUS_TOKEN", "").strip()
 G = httpx.Client(headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Chrome/124 Safari/537.36",
                           "Accept": "application/json"}, timeout=20, follow_redirects=True)
+API = httpx.Client(headers={"Authorization": f"Bearer {TOKEN}"}, timeout=20) if TOKEN else None
+
+
+def gget(path, params=None):
+    """Official API (api.genius.com, works from servers) when a token is set, else the public site API."""
+    if API:
+        r = API.get("https://api.genius.com" + path, params=params)
+    else:
+        r = G.get("https://genius.com/api" + path, params=params)
+    r.raise_for_status()
+    return r.json()
 
 
 def genius_songs(artist, n=12):
-    r = G.get("https://genius.com/api/search/song", params={"q": artist, "per_page": n})
+    if API:
+        hits = gget("/search", {"q": artist, "per_page": 20}).get("response", {}).get("hits", [])
+    else:
+        hits = [h for sec in gget("/search/song", {"q": artist, "per_page": n}).get("response", {}).get("sections", [])
+                for h in sec.get("hits", [])]
     out = []
-    for sec in r.json().get("response", {}).get("sections", []):
-        for h in sec.get("hits", []):
+    if True:
+        for h in hits:
             s = h.get("result") or {}
             pa = (s.get("primary_artist") or {}).get("name", "")
             if s.get("id") and (same_artist(artist, pa) or norm_key(artist) in norm_key(s.get("artist_names", ""))):
@@ -26,13 +43,13 @@ def genius_songs(artist, n=12):
 
 
 def genius_producers(song_id):
-    s = G.get(f"https://genius.com/api/songs/{song_id}").json().get("response", {}).get("song", {})
+    s = gget(f"/songs/{song_id}").get("response", {}).get("song", {})
     return [(p.get("name"), p.get("id")) for p in s.get("producer_artists") or [] if p.get("name")]
 
 
 def genius_socials(gid):
     try:
-        a = G.get(f"https://genius.com/api/artists/{gid}").json().get("response", {}).get("artist", {})
+        a = gget(f"/artists/{gid}").get("response", {}).get("artist", {})
         return {"instagram": a.get("instagram_name"), "twitter": a.get("twitter_name")}
     except Exception:
         return {}
