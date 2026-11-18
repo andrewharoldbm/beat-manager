@@ -106,6 +106,7 @@ services:
       DATABASE_URL: postgresql://beats:${DB_PASSWORD}@db:5432/beats
     volumes:
       - ./data/beats:/data/beats
+      - visuals:/data/visuals
     depends_on:
       db:
         condition: service_healthy

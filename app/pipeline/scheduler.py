@@ -136,7 +136,7 @@ def step_upload(conn):
                            ORDER BY u.scheduled LIMIT 1""").fetchall()
     for r in rows:
         try:
-            video = r["video_path"] or render.render(r["file_path"], r["name"], r["genre"], r["id"])
+            video = r["video_path"] or render.render(r["file_path"], r["name"], r["genre"], r["id"], conn)
             conn.execute("UPDATE beats SET video_path=%s WHERE id=%s", (video, r["id"]))
             from app.pipeline.youtube_api import upload
             vid = upload(video, r["title"], r["description"], r["tags"])
@@ -166,7 +166,15 @@ def run():
     conn = connect()
     ensure_schema(conn)
     log_event(conn, "info", "scheduler", "scheduler started")
+    last_cov = 0
     while True:
+        if time.time() - last_cov > 6 * 3600:
+            last_cov = time.time()
+            try:
+                from app.pipeline import covers
+                covers.run(conn)
+            except Exception:
+                log_event(conn, "warn", "covers", traceback.format_exc()[-300:])
         try:
             if not is_killed(conn):
                 step_analyze(conn)

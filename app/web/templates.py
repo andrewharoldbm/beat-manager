@@ -19,7 +19,7 @@ textarea{width:100%;min-height:220px;font-family:ui-monospace,Menlo,monospace;fo
 .drop{border:2px dashed var(--line);border-radius:12px;padding:30px;text-align:center;color:var(--mut)}
 </style></head><body>
 {% if nav %}<nav><span class="brand">BEAT MANAGER</span>
-{% for href,label in [('/','Overview'),('/beats','Beats'),('/queue','Calendar'),('/research','Research'),('/emails','Emails'),('/contacts','Contacts'),('/events','Log'),('/settings','Settings')] %}
+{% for href,label in [('/','Overview'),('/beats','Beats'),('/queue','Calendar'),('/research','Research'),('/covers','Covers'),('/emails','Emails'),('/contacts','Contacts'),('/events','Log'),('/settings','Settings')] %}
 <a href="{{href}}" class="{{'on' if active==href}}">{{label}}</a>{% endfor %}
 <form method="post" action="/logout" class="inline" style="margin-left:auto"><button class="sec">Log out</button></form></nav>{% endif %}
 <main>{% block body %}{% endblock %}</main></body></html>"""
@@ -216,5 +216,17 @@ EMAILS = """{% extends 'base' %}{% block body %}
 {% for c in hot %}<tr><td>{{c.email}}</td><td>{{c.sent_count}}</td><td>{{c.opened_count}}</td><td class="ok">{{'yes' if c.replied else ''}}</td><td class="mut">{{c.last_sent.strftime('%d %b') if c.last_sent}}</td></tr>{% endfor %}</table>
 {% endblock %}"""
 
-ALL = {"base": BASE, "login": LOGIN, "overview": OVERVIEW, "beats": BEATS, "queue": QUEUE,
+COVERS = """{% extends 'base' %}{% block body %}
+<h1>Covers</h1>
+<p class="mut">Public-domain photos (CC0 / no rights reserved) collected automatically, cropped 1:1 and graded dark.
+Each beat gets the least-used cover of its genre. Delete any you don't like - new ones are added automatically (up to 40 per genre).</p>
+<div class="row" style="gap:8px;margin-bottom:12px">{% for g,n in genres %}<a class="pill {{'ok' if g==cur}}" href="/covers?genre={{g}}">{{g or 'general'}} ({{n}})</a>{% endfor %}</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">
+{% for c in rows %}<div class="card" style="padding:6px"><img src="/covers/img/{{c.id}}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px">
+<div class="row" style="justify-content:space-between;margin-top:4px"><span class="mut">used {{c.used}}x</span>
+<form method="post" action="/covers/delete/{{c.id}}"><button style="padding:2px 8px">Delete</button></form></div></div>{% endfor %}
+</div>{% if not rows %}<p class="mut">No covers yet - the first ones arrive within a few hours.</p>{% endif %}
+{% endblock %}"""
+
+ALL = {"base": BASE, "covers": COVERS, "login": LOGIN, "overview": OVERVIEW, "beats": BEATS, "queue": QUEUE,
        "research": RESEARCH, "contacts": CONTACTS, "emails": EMAILS, "events": EVENTS, "settings": SETTINGS}

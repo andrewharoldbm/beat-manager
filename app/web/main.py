@@ -246,6 +246,36 @@ def research(request: Request, q: str = "", maxsup: str = "", minvpd: str = "", 
                 formulas=json.dumps(meta.load_formulas(db()), indent=2))
 
 
+@app.get("/covers", response_class=HTMLResponse)
+def covers_page(request: Request, genre: str = "detroit"):
+    c = db()
+    genres = [(r["genre"], r["n"]) for r in c.execute("SELECT genre, count(*) n FROM covers WHERE genre <> '__deleted' GROUP BY genre ORDER BY genre").fetchall()]
+    rows = c.execute("SELECT id, used FROM covers WHERE genre=%s ORDER BY id DESC", (genre,)).fetchall()
+    return page("covers", request, genres=genres, rows=rows, cur=genre)
+
+
+@app.get("/covers/img/{cid}")
+def cover_img(cid: int):
+    r = db().execute("SELECT path FROM covers WHERE id=%s", (cid,)).fetchone()
+    if not r or not r["path"].startswith("/data/visuals/") or not os.path.exists(r["path"]):
+        return Response(status_code=404)
+    return Response(open(r["path"], "rb").read(), media_type="image/jpeg")
+
+
+@app.post("/covers/delete/{cid}")
+def cover_delete(cid: int):
+    c = db()
+    r = c.execute("SELECT path, genre FROM covers WHERE id=%s", (cid,)).fetchone()
+    if r:
+        try:
+            os.remove(r["path"])
+        except OSError:
+            pass
+        # keep the row (marked) so the same photo is never downloaded again
+        c.execute("UPDATE covers SET genre='__deleted', path='' WHERE id=%s", (cid,))
+    return RedirectResponse(f"/covers?genre={r['genre'] if r else ''}", status_code=303)
+
+
 CONTACT_COND = {"own": "coalesce(category,'own') = 'own'", "found": "category = 'artist'",
                 "producers": "category = 'producer'"}
 

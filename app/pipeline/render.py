@@ -17,7 +17,18 @@ def _size():
     return (1080, 1920) if FORMAT == "9:16" else (1920, 1080)
 
 
-def pick_visual(genre: str | None):
+def pick_visual(genre: str | None, conn=None):
+    """Least-used cover of the beat's genre (then general); falls back to any file in the folders."""
+    if conn is not None:
+        try:
+            for g in ([genre] if genre else []) + [""]:
+                r = conn.execute("""SELECT id, path FROM covers WHERE genre=%s ORDER BY used, random() LIMIT 1""",
+                                 (g,)).fetchone()
+                if r and os.path.exists(r["path"]):
+                    conn.execute("UPDATE covers SET used=used+1 WHERE id=%s", (r["id"],))
+                    return r["path"]
+        except Exception:
+            pass
     if not os.path.isdir(VISUALS_DIR):
         return None
     cands = []
@@ -31,11 +42,11 @@ def pick_visual(genre: str | None):
     return random.choice(cands) if cands else None
 
 
-def render(audio_path: str, name: str, genre: str | None, beat_id: int) -> str:
+def render(audio_path: str, name: str, genre: str | None, beat_id: int, conn=None) -> str:
     os.makedirs(OUT_DIR, exist_ok=True)
     w, h = _size()
     out = os.path.join(OUT_DIR, f"beat_{beat_id}_{w}x{h}.mp4")
-    img = pick_visual(genre)
+    img = pick_visual(genre, conn)
     safe = name.replace("'", "").replace(":", " ")[:40]
     if img:
         vin = ["-loop", "1", "-i", img]
