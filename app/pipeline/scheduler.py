@@ -136,7 +136,7 @@ def step_upload(conn):
                            ORDER BY u.scheduled LIMIT 1""").fetchall()
     for r in rows:
         try:
-            video = r["video_path"] or render.render(r["file_path"], r["name"], r["genre"], r["id"], conn)
+            video = r["video_path"] or render.render(r["file_path"], r["name"], r["genre"], r["id"], conn, r.get("cover_path"))
             conn.execute("UPDATE beats SET video_path=%s WHERE id=%s", (video, r["id"]))
             from app.pipeline.youtube_api import upload
             vid = upload(video, r["title"], r["description"], r["tags"])

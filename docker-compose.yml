@@ -35,6 +35,7 @@ services:
     volumes:
       - ./data/beats:/data/beats
       - secrets:/data/secrets
+      - visuals:/data/visuals
     depends_on:
       db:
         condition: service_healthy

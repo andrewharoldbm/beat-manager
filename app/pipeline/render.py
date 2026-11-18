@@ -42,11 +42,11 @@ def pick_visual(genre: str | None, conn=None):
     return random.choice(cands) if cands else None
 
 
-def render(audio_path: str, name: str, genre: str | None, beat_id: int, conn=None) -> str:
+def render(audio_path: str, name: str, genre: str | None, beat_id: int, conn=None, cover=None) -> str:
     os.makedirs(OUT_DIR, exist_ok=True)
     w, h = _size()
     out = os.path.join(OUT_DIR, f"beat_{beat_id}_{w}x{h}.mp4")
-    img = pick_visual(genre, conn)
+    img = cover if cover and os.path.exists(cover) else pick_visual(genre, conn)
     safe = name.replace("'", "").replace(":", " ")[:40]
     if img:
         vin = ["-loop", "1", "-i", img]

@@ -71,6 +71,7 @@ MIGRATIONS = [
     "ALTER TABLE contacts ADD COLUMN IF NOT EXISTS notes TEXT",
     "UPDATE contacts SET category = CASE WHEN source LIKE 'prod:%%' THEN 'producer' WHEN source LIKE 'yt:%%' THEN 'artist' ELSE 'own' END WHERE category IS NULL",
     "CREATE TABLE IF NOT EXISTS covers (id SERIAL PRIMARY KEY, source_id TEXT UNIQUE, genre TEXT, path TEXT, url TEXT, creator TEXT, license TEXT, query TEXT, used INTEGER DEFAULT 0, added TIMESTAMPTZ DEFAULT now())",
+    "ALTER TABLE beats ADD COLUMN IF NOT EXISTS cover_path TEXT",
 ]
 
 

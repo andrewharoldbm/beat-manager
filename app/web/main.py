@@ -165,12 +165,34 @@ def beat_edit(bid: int, genre: str = Form(""), bpm: str = Form(""), key: str = F
 def queue(request: Request):
     c = db()
     rows = c.execute("""SELECT u.id uid, u.scheduled, u.title, u.title_locked, u.formula, u.is_test, u.status, u.error,
-                        b.name, b.genre FROM uploads u JOIN beats b ON b.id=u.beat_id
+                        b.id bid, b.name, b.genre, b.cover_path FROM uploads u JOIN beats b ON b.id=u.beat_id
                         WHERE u.status IN ('scheduled','final','error') ORDER BY u.scheduled""").fetchall()
+    from urllib.parse import quote_plus
+    rows = [dict(r, pins=[(a, "https://www.pinterest.com/search/pins/?q=" + quote_plus(a + " aesthetic"))
+                          for a in (r["formula"] or "").split(" x ") if a.strip()]) for r in rows]
     done = c.execute("""SELECT u.done, u.title, u.formula, (SELECT views FROM upload_stats s WHERE s.upload_id=u.id
                          ORDER BY measured DESC LIMIT 1) views FROM uploads u WHERE status='uploaded' ORDER BY done DESC LIMIT 50""").fetchall()
     from app.maint.worker import formula_performance
     return page("queue", request, rows=rows, done=done, perf=formula_performance(c))
+
+
+@app.post("/beats/{bid}/cover")
+async def beat_cover(bid: int, file: UploadFile = File(...)):
+    from app.pipeline import custom_cover
+    data = await file.read()
+    try:
+        custom_cover.save(db(), bid, data)
+    except Exception as e:
+        log_event(db(), "warn", "web", f"cover for beat {bid} rejected: {e}")
+    return RedirectResponse("/queue", status_code=303)
+
+
+@app.get("/beats/{bid}/cover.jpg")
+def beat_cover_img(bid: int):
+    r = db().execute("SELECT cover_path FROM beats WHERE id=%s", (bid,)).fetchone()
+    if not r or not r["cover_path"] or not os.path.exists(r["cover_path"]):
+        return Response(status_code=404)
+    return Response(open(r["cover_path"], "rb").read(), media_type="image/jpeg")
 
 
 @app.post("/queue/{uid}/title")

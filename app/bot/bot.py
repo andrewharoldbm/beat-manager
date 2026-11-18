@@ -85,6 +85,26 @@ def status(conn):
             f"My list: {e['own']}")
 
 
+def handle_cover(conn, msg):
+    """Photo sent as a reply to a beat (or to my 'Got it' message) becomes that beat's cover."""
+    b = beat_for_reply(conn, msg)
+    if not b:
+        send("To set a cover, reply to the beat (or to my 'Got it' message) with the picture.")
+        return
+    f = (msg.get("photo") or [None])[-1] or msg.get("document")
+    info = c.get(f"{API}/getFile", params={"file_id": f["file_id"]}).json()
+    path = info.get("result", {}).get("file_path")
+    if not path:
+        send("Could not fetch the picture.")
+        return
+    try:
+        from app.pipeline import custom_cover
+        custom_cover.save(conn, b["id"], c.get(f"{FILE_API}/{path}").content)
+        send(f"Cover set for {b['name'] or b['original_name']}.")
+    except Exception as e:
+        send(f"Cover not accepted: {e}")
+
+
 def handle_audio(conn, msg):
     doc = msg.get("audio") or msg.get("document")
     if not doc:
@@ -283,6 +303,8 @@ def run():
             elif text == "/restore":
                 pending = "restore"
                 send("Send your PIN to confirm RESTORE.")
+            elif msg.get("photo") or (msg.get("document") or {}).get("mime_type", "").startswith("image/"):
+                handle_cover(conn, msg)
             elif msg.get("audio") or msg.get("document"):
                 handle_audio(conn, msg)
 

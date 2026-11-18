@@ -93,13 +93,16 @@ QUEUE = """{% extends 'base' %}{% block body %}
 <h1>Upload calendar</h1>
 <p class="mut">Titles marked <span class="pill">scheduled</span> are preliminary: the final title is chosen 24h before upload with the latest data.
 Edit a title to lock it.</p>
-<table><tr><th>When (UTC)</th><th>Beat</th><th>Title</th><th>Formula</th><th>Status</th><th></th></tr>
+<table><tr><th>When (UTC)</th><th>Beat</th><th>Cover</th><th>Title</th><th>Formula</th><th>Status</th><th></th></tr>
 {% for u in rows %}<tr><td>{{u.scheduled.strftime('%a %d %b %H:%M')}}</td><td>{{u.name}}<div class="mut">{{u.genre}}</div></td>
+<td style="min-width:150px">{% if u.cover_path %}<img src="/beats/{{u.bid}}/cover.jpg" style="width:56px;height:56px;object-fit:cover;border-radius:4px;display:block">{% else %}<span class="mut">auto</span>{% endif %}
+<form method="post" action="/beats/{{u.bid}}/cover" enctype="multipart/form-data"><input type="file" name="file" accept="image/*" onchange="this.form.submit()" style="width:140px"></form>
+{% for a,l in u.pins %}<a href="{{l}}" target="_blank" rel="noopener" class="pill" style="font-size:11px">Pinterest: {{a}}</a> {% endfor %}</td>
 <td><form method="post" action="/queue/{{u.uid}}/title" class="row"><input name="title" value="{{u.title or ''}}" size=60 placeholder="auto"><button class="sec">{{'Locked' if u.title_locked else 'Lock'}}</button></form>{% if u.error %}<div class="bad">{{u.error}}</div>{% endif %}</td>
 <td class="mut">{{u.formula or ''}}{% if u.is_test %} <span class="pill">test</span>{% endif %}</td><td><span class="pill">{{u.status}}</span></td>
 <td><form method="post" action="/queue/{{u.uid}}/move" class="row"><input type="datetime-local" name="when"><button class="sec">Move</button></form>
 <form method="post" action="/queue/{{u.uid}}/skip" class="inline"><button class="sec">Skip</button></form></td></tr>
-{% else %}<tr><td colspan=6 class="mut">Calendar is empty. Beats are scheduled once YouTube uploading is ON.</td></tr>{% endfor %}</table>
+{% else %}<tr><td colspan=7 class="mut">Calendar is empty. Beats are scheduled once YouTube uploading is ON.</td></tr>{% endfor %}</table>
 <h2>Formula performance (avg views after 7 days)</h2>
 <table>{% for p in perf %}<tr><td>{{p.formula}}</td><td>{{p.avg_views|int}} views</td><td class="mut">{{p.videos}} videos</td></tr>{% else %}<tr><td class="mut">Not enough data yet</td></tr>{% endfor %}</table>
 <h2>Uploaded</h2>
