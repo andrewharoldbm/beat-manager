@@ -6,7 +6,7 @@ DEFAULTS = {
     "yt_enabled": os.environ.get("YT_ENABLED", "0") == "1",
     "tg_channel_enabled": os.environ.get("TG_CHANNEL_ENABLED", "0") == "1",
     "tg_channel_id": os.environ.get("TG_CHANNEL_ID", ""),
-    "telegram_channel_url": os.environ.get("TELEGRAM_CHANNEL_URL", ""),
+    "telegram_channel_url": os.environ.get("TELEGRAM_CHANNEL_URL", "https://t.me/+HIdDASSkqGxmNGI0"),
     "instagram_url": os.environ.get("INSTAGRAM_URL", "instagram.com/conkretus"),
     "uploads_per_day": int(os.environ.get("UPLOADS_PER_DAY", "1")),
     "upload_hours_utc": [int(h) for h in os.environ.get("UPLOAD_HOURS_UTC", "16,22").split(",")],
@@ -28,7 +28,7 @@ DEFAULTS = {
 
 def get(conn, key):
     row = conn.execute("SELECT value FROM settings WHERE key=%s", (key,)).fetchone()
-    if row is not None and row["value"] is not None:
+    if row is not None and row["value"] is not None and row["value"] != "":
         return row["value"]
     return DEFAULTS.get(key)
 
