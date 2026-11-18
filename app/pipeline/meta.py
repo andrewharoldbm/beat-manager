@@ -92,7 +92,7 @@ def make_description(beat, artists, suffix, beatstars_url=None, telegram="", ins
         f"BPM: {beat['bpm']:g} | Key: {beat['musical_key']}" + (f" | Tuning: {hz}" if hz else ""),
         f"prod. by {prods}",
         "",
-        f"💰 Buy / Lease: {beatstars_url or 'link coming soon'}",
+        (f"💰 Buy / Lease: {beatstars_url}" if beatstars_url else "💰 To purchase: DM @conkretus on Telegram"),
     ]
     if telegram:
         lines.append(f"📲 Telegram: {telegram}")
