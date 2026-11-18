@@ -5,7 +5,7 @@ import os
 import re
 import time
 from fastapi import FastAPI, Request, Form, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import Response, HTMLResponse, RedirectResponse, JSONResponse
 from jinja2 import Environment, DictLoader, select_autoescape
 from app.common.db import connect, ensure_schema, is_killed, log_event
 from app.common import settings as S
@@ -244,6 +244,30 @@ def research(request: Request, q: str = "", maxsup: str = "", minvpd: str = "", 
     rows = [verdict(r) for r in rows]
     return page("research", request, rows=rows, q=q, maxsup=maxsup, minvpd=minvpd, sort=sort, only=only,
                 formulas=json.dumps(meta.load_formulas(db()), indent=2))
+
+
+CONTACT_COND = {"own": "coalesce(category,'own') = 'own'", "found": "category = 'artist'",
+                "producers": "category = 'producer'"}
+
+
+@app.get("/contacts/export")
+def contacts_export(list: str = "own", valid: int = 0, fmt: str = "txt"):
+    cond = CONTACT_COND.get(list, CONTACT_COND["own"])
+    if valid:
+        cond += " AND status='valid'"
+    rows = db().execute(f"""SELECT email, name, role, tags, worked_with, status, source FROM contacts
+                            WHERE {cond} AND NOT unsubscribed ORDER BY id""").fetchall()
+    if fmt == "csv":
+        import csv, io
+        b = io.StringIO()
+        w = csv.writer(b)
+        w.writerow(["email", "name", "role", "genres", "worked_with", "status", "source"])
+        for r in rows:
+            w.writerow([r["email"], r["name"] or "", r["role"] or "", " ".join(r["tags"] or []),
+                        ", ".join(r["worked_with"] or []), r["status"], r["source"] or ""])
+        return Response(b.getvalue(), media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="contacts_{list}.csv"'})
+    return Response("\n".join(r["email"] for r in rows), media_type="text/plain")
 
 
 @app.get("/contacts", response_class=HTMLResponse)

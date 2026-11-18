@@ -140,6 +140,17 @@ CONTACTS = """{% extends 'base' %}{% block body %}
 <a class="pill {{'ok' if grp=='found'}}" href="/contacts?list=found">Artists found ({{counts.found}}) {{'· sending' if send_found else '· not sending'}}</a>
 <a class="pill {{'ok' if grp=='producers'}}" href="/contacts?list=producers">Producers ({{counts.producers}}) · for loops, never get beat packs</a></div>
 {% if grp=='producers' %}<p class="mut">Producers found from Genius credits of our artists: {{pstat.n}} producers, {{pstat.checked}} searched for email, {{pstat.found}} with email.</p>{% endif %}
+<div class="card row" style="gap:10px;align-items:center;margin-bottom:12px">
+<b>{{ {'own':'My imported list','found':'Artist emails found','producers':'Producer emails found'}[grp] }}</b>
+<button type="button" onclick="cp(0)">Copy all emails</button>
+<button type="button" onclick="cp(1)">Copy verified only</button>
+<a class="pill" href="/contacts/export?list={{grp}}&fmt=csv">Download CSV</a>
+<span id="cpmsg" class="mut"></span></div>
+<script>
+async function cp(v){const r=await fetch('/contacts/export?list={{grp}}&valid='+v);const t=await r.text();
+try{await navigator.clipboard.writeText(t);document.getElementById('cpmsg').textContent='Copied '+(t?t.split('\n').length:0)+' emails';}
+catch(e){const w=window.open('','_blank');w.document.body.innerText=t;}}
+</script>
 {% if grp=='found' %}<p class="mut">Public business emails found in artists' own YouTube descriptions. Only verified (valid) ones are ever emailed, and only when "Send to found contacts" is ON in Settings.</p>{% endif %}
 <div class="grid">{% for s,n in stats %}<div class="card"><div class="mut">{{s}}</div><div class="big">{{n}}</div></div>{% endfor %}</div>
 <h2>Import</h2>
