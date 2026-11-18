@@ -119,7 +119,7 @@ def beats(request: Request):
     c = db()
     used = [r["genre"] for r in c.execute("SELECT DISTINCT genre FROM beats WHERE genre IS NOT NULL").fetchall()]
     genres = list(dict.fromkeys(DEFAULT_GENRES + list(meta.load_formulas(c).keys()) + used))
-    return page("beats", request, beats=c.execute("SELECT * FROM beats ORDER BY id DESC LIMIT 500").fetchall(), genres=genres)
+    return page("beats", request, beats=c.execute("SELECT * FROM beats WHERE status <> 'deleted' ORDER BY id DESC LIMIT 500").fetchall(), genres=genres)
 
 
 @app.post("/api/upload")
@@ -174,6 +174,32 @@ def queue(request: Request):
                          ORDER BY measured DESC LIMIT 1) views FROM uploads u WHERE status='uploaded' ORDER BY done DESC LIMIT 50""").fetchall()
     from app.maint.worker import formula_performance
     return page("queue", request, rows=rows, done=done, perf=formula_performance(c))
+
+
+@app.post("/beats/{bid}/delete")
+def beat_delete(bid: int):
+    c = db()
+    b = c.execute("SELECT * FROM beats WHERE id=%s", (bid,)).fetchone()
+    if b:
+        live = c.execute("SELECT 1 FROM uploads WHERE beat_id=%s AND status='uploaded'", (bid,)).fetchone()
+        c.execute("DELETE FROM uploads WHERE beat_id=%s AND status <> 'uploaded'", (bid,))
+        c.execute("UPDATE email_packs SET beat_ids = array_remove(beat_ids, %s) WHERE sent_at IS NULL", (bid,))
+        if live:  # keep the record of what's on YouTube, just retire the beat
+            c.execute("UPDATE beats SET status='deleted' WHERE id=%s", (bid,))
+        else:
+            for f in (b.get("file_path"), b.get("video_path"), b.get("cover_path")):
+                try:
+                    if f and f.startswith("/data/"):
+                        os.remove(f)
+                except OSError:
+                    pass
+            used = c.execute("SELECT 1 FROM email_packs WHERE %s = ANY(beat_ids)", (bid,)).fetchone()
+            if used:
+                c.execute("UPDATE beats SET status='deleted' WHERE id=%s", (bid,))
+            else:
+                c.execute("DELETE FROM beats WHERE id=%s", (bid,))
+        log_event(c, "info", "web", f"beat deleted: {b['name'] or b['original_name']}")
+    return RedirectResponse("/beats", status_code=303)
 
 
 @app.post("/beats/{bid}/cover")

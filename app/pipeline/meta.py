@@ -39,6 +39,8 @@ def beat_name(original_name: str) -> str:
     base = re.sub(r"^\d{9,}_", "", base)                 # timestamp prefix from bot
     base = re.sub(r"[@#][A-Za-z0-9_.$-]+", " ", base)    # tags
     base = re.sub(r"\b\d{2,3}\s*bpm\b", " ", base, flags=re.I)
+    base = re.sub(r"\b\d{3}(\.\d+)?\s*hz\b", " ", base, flags=re.I)
+    base = re.sub(r"\b(detune[d]?|tuned|tagged|untagged|master(ed)?|final|mixdown|export|v\d+)\b", " ", base, flags=re.I)
     base = re.sub(r"\b([A-G][#b]?\s*(min|minor|maj|major|m))\b", " ", base, flags=re.I)
     base = re.sub(r"[_\-]+", " ", base)
     base = re.sub(r"\s+", " ", base).strip()

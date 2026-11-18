@@ -69,7 +69,8 @@ BEATS = """{% extends 'base' %}{% block body %}
 {% for b in beats %}<tr><td class="mut">{{b.id}}</td><td>{{b.name or b.original_name}}{% if b.needs_review %}<div class="warn">{{b.review_note}}</div>{% endif %}</td>
 <td>{{b.genre or ''}}</td><td>{{b.bpm|int if b.bpm else ''}}</td><td>{{b.musical_key or ''}}<div class="mut">{{b.key_alt or ''}}</div></td><td>{{b.tuning_hz|int if b.tuning_hz else ''}}</td>
 <td>{{(b.producers or [])|join(' x ')}}</td><td><span class="pill">{{b.status}}</span></td>
-<td><form method="post" action="/beats/{{b.id}}/edit" class="row"><input name="genre" value="{{b.genre or ''}}" size=7 title="genre"><input name="bpm" value="{{b.bpm|int if b.bpm else ''}}" size=3 title="BPM"><input name="key" value="{{b.musical_key or ''}}" size=7 title="key"><input name="bs" value="{{b.beatstars_url or ''}}" placeholder="BeatStars link" size=12><button class="sec">Save</button></form></td></tr>{% endfor %}</table>
+<td><form method="post" action="/beats/{{b.id}}/edit" class="row"><input name="genre" value="{{b.genre or ''}}" size=7 title="genre"><input name="bpm" value="{{b.bpm|int if b.bpm else ''}}" size=3 title="BPM"><input name="key" value="{{b.musical_key or ''}}" size=7 title="key"><input name="bs" value="{{b.beatstars_url or ''}}" placeholder="BeatStars link" size=12><button class="sec">Save</button></form>
+<form method="post" action="/beats/{{b.id}}/delete" class="inline" onsubmit="return confirm('Delete {{b.name}}? It is removed from the queue and email packs. A video already on YouTube stays there.')"><button class="sec" style="color:#ff6b6b">Delete</button></form></td></tr>{% endfor %}</table>
 <script>
 let files=[];const genres={{genres|tojson}};
 const drop=document.getElementById('drop'),list=document.getElementById('list');
