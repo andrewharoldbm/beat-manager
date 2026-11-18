@@ -28,3 +28,13 @@ with open(TOKEN, "w") as f:
     f.write(flow.credentials.to_json())
 os.chmod(TOKEN, 0o600)
 print(f"Saved {which} login.")
+try:
+    from googleapiclient.discovery import build
+    if which == "youtube":
+        ch = build("youtube", "v3", credentials=flow.credentials, cache_discovery=False).channels().list(part="snippet", mine=True).execute()
+        print("Connected YouTube channel:", ", ".join(i["snippet"]["title"] for i in ch.get("items", [])) or "NONE")
+    else:
+        p = build("gmail", "v1", credentials=flow.credentials, cache_discovery=False).users().getProfile(userId="me").execute()
+        print("Connected Gmail:", p.get("emailAddress"))
+except Exception as e:
+    print("Could not check account:", e)
