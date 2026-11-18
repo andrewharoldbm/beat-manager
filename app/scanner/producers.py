@@ -177,5 +177,5 @@ def step(conn, artists=8, emails=10):
             log_event(conn, "warn", "producers", f"genius {a['name']}: {str(e)[:150]}")
             conn.execute("UPDATE artists SET producers_checked=now() WHERE id=%s", (a["id"],))
     n = find_emails(conn, emails)
-    if n:
-        log_event(conn, "info", "producers", f"found {n} new producer emails")
+    pc = conn.execute("SELECT count(*) n FROM producers").fetchone()["n"]
+    log_event(conn, "info", "producers", f"producers known: {pc}, found {n} new producer emails this round")

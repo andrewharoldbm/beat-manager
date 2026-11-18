@@ -71,6 +71,5 @@ def step(conn, batch=20):
             log_event(conn, "warn", "emails", f"{a['name']}: {str(e)[:150]}")
             conn.execute("UPDATE artists SET email_checked=now() WHERE id=%s", (a["id"],))
         time.sleep(random.uniform(4, 8))
-    if total:
-        log_event(conn, "info", "emails", f"found {total} new artist emails")
+    log_event(conn, "info", "emails", f"checked {len(rows)} artists, found {total} new artist emails")
     return total
