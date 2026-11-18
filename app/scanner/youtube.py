@@ -50,6 +50,12 @@ def _age_days(text: str) -> float:
     if not m:
         return 9999
     n = int(m.group(1))
+    # compact English: "5h ago", "2w ago", "1mo ago", "3y ago"
+    cm = re.search(r"(\d+)\s*(s|sec|m|min|h|hr|d|w|wk|mo|y|yr)s?\b", t)
+    if cm:
+        u = cm.group(2)
+        return {"s": 0.5, "sec": 0.5, "m": 0.5, "min": 0.5, "h": 0.5, "hr": 0.5, "d": n, "w": n * 7, "wk": n * 7,
+                "mo": n * 30, "y": n * 365, "yr": n * 365}[u]
     for rx, d in AGE_UNITS:
         if re.search(rx, t):
             return 0.5 if d == 0.5 else n * d
