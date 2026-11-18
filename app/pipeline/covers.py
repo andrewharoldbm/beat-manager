@@ -73,7 +73,28 @@ def fill_genre(conn, genre, need):
     return got
 
 
+def purge(conn):
+    """Remove all auto-collected covers (rows kept as deleted so they are never fetched again)."""
+    n = 0
+    for r in conn.execute("SELECT id, path FROM covers WHERE genre <> '__deleted'").fetchall():
+        try:
+            if r["path"]:
+                os.remove(r["path"])
+        except OSError:
+            pass
+        conn.execute("UPDATE covers SET genre='__deleted', path='' WHERE id=%s", (r["id"],))
+        n += 1
+    return n
+
+
 def run(conn):
+    from app.common import settings as S
+    if not S.get(conn, "covers_purge_v1"):
+        n = purge(conn)
+        S.set_(conn, "covers_purge_v1", True)
+        log_event(conn, "info", "covers", f"removed {n} auto covers")
+    if not S.get(conn, "covers_auto"):
+        return 0
     total = 0
     for g in QUERIES:
         have = conn.execute("SELECT count(*) n FROM covers WHERE genre=%s", (g,)).fetchone()["n"]
