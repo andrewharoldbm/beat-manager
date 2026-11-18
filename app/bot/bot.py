@@ -262,6 +262,10 @@ def run():
                 waiting = conn.execute("SELECT count(*) n FROM beats WHERE status='analyzed'").fetchone()["n"]
                 lines = [f"{r['scheduled']:%m-%d %H:%M} UTC  {r['t']}" + (" (preliminary)" if r['status']=='scheduled' else "") for r in rows]
                 send("Upcoming uploads:\n" + ("\n".join(lines) or "none") + f"\nAnalyzed, waiting for YouTube to be enabled: {waiting}")
+            elif text == "/log":
+                rows = conn.execute("""SELECT at, level, kind, message FROM events WHERE level IN ('warn','alert')
+                                       OR kind IN ('emails','producers') ORDER BY id DESC LIMIT 12""").fetchall()
+                send("Recent log:\n" + ("\n".join(f"{r['at']:%m-%d %H:%M} {r['kind']}: {r['message'][:160]}" for r in rows) or "empty"))
             elif text == "/review":
                 rows = conn.execute("SELECT name, review_note FROM beats WHERE needs_review ORDER BY id DESC LIMIT 10").fetchall()
                 send("Needs review:\n" + ("\n".join(f"{r['name']}: {r['review_note']}" for r in rows) or "nothing"))
@@ -270,7 +274,7 @@ def run():
                 S.set_(conn, "yt_enabled", text == "/resume")
                 send("YouTube uploading " + ("RESUMED." if text == "/resume" else "PAUSED. Beats keep being analyzed."))
             elif text == "/help":
-                send("Commands:\n/status - system state\n/queue - next uploads\n/review - beats to check\n"
+                send("Commands:\n/status - system state\n/queue - next uploads\n/review - beats to check\n/log - recent problems\n"
                      "/pause, /resume - YouTube uploading\n/prod <beat name> @name / -@name - add or remove a producer (or just reply to the beat)\n/kill, /restore - emergency stop (PIN)\n"
                      "Send an mp3/wav with a caption like: #detroit @conkretus @rsd")
             elif text == "/kill":

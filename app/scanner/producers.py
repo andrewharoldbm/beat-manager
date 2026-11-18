@@ -70,13 +70,47 @@ def link(conn, prod, artist):
                     ON CONFLICT DO NOTHING""", (prod["id"], artist["id"]))
 
 
+PROD_RE = re.compile(r"(?:\bprod(?:uced)?\.?\s*(?:by)?\s*[:\-]?\s*)([A-Za-z0-9$.&'_ -]{2,60}?)(?=[)\]\n|,]|$)", re.I)
+
+
+def split_names(raw):
+    out = []
+    for n in re.split(r"\s+(?:x|&|and)\s+|,|/|\+", raw, flags=re.I):
+        n = re.sub(r"\s+", " ", n).strip(" .-_'")
+        if 2 <= len(n) <= 30 and not re.search(r"\b(official|video|music|audio|lyrics|dir|shot|by)\b", n, re.I):
+            out.append(n)
+    return out
+
+
+def youtube_producers(artist):
+    """Fallback without Genius: 'prod. by X' in the artist's own video titles/descriptions."""
+    names = set()
+    vids = youtube.search(f'{artist["name"]} official video') or []
+    own = [v for v in vids if v.get("id") and same_artist(artist["name"], v.get("ch"))][:6]
+    for v in own:
+        for m in PROD_RE.findall(v.get("t", "")):
+            names.update(split_names(m))
+    for v in own[:3]:
+        for m in PROD_RE.findall(youtube.description(v["id"])):
+            names.update(split_names(m))
+        time.sleep(random.uniform(2, 4))
+    return {n: None for n in names if norm_key(n) != norm_key(artist["name"])}
+
+
 def process_artist(conn, artist):
     prods = {}
-    for sid in genius_songs(artist["name"]):
-        for name, gid in genius_producers(sid):
-            if norm_key(name) != norm_key(artist["name"]):
-                prods[name] = gid
-        time.sleep(random.uniform(1.5, 3))
+    try:
+        for sid in genius_songs(artist["name"]):
+            for name, gid in genius_producers(sid):
+                if norm_key(name) != norm_key(artist["name"]):
+                    prods[name] = gid
+            time.sleep(random.uniform(1.5, 3))
+    except Exception as e:
+        if not getattr(process_artist, "_warned", False):
+            log_event(conn, "warn", "producers", f"genius unavailable, using YouTube credits: {str(e)[:120]}")
+            process_artist._warned = True
+    if not prods:
+        prods = youtube_producers(artist)
     for name, gid in prods.items():
         p = upsert_producer(conn, name, gid)
         link(conn, p, artist)
@@ -112,6 +146,11 @@ def find_emails(conn, batch=5):
 
 
 def step(conn, artists=8, emails=10):
+    from app.common import settings as S
+    if not S.get(conn, "prod_reset_v1"):  # retry artists that failed while Genius was blocked
+        conn.execute("""UPDATE artists a SET producers_checked=NULL WHERE producers_checked IS NOT NULL
+                        AND NOT EXISTS (SELECT 1 FROM producer_artists x WHERE x.artist_id=a.id)""")
+        S.set_(conn, "prod_reset_v1", True)
     for a in conn.execute("""SELECT * FROM artists WHERE producers_checked IS NULL
                                AND (coalesce(discovered_via,'') <> 'yt_title' OR title_mentions >= 3)
                              ORDER BY priority, id LIMIT %s""", (artists,)).fetchall():
