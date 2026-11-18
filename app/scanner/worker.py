@@ -108,6 +108,12 @@ def expand_lastfm(conn, artist):
 def run():
     conn = connect()
     seed(conn)
+    from app.common import settings as S
+    if not S.get(conn, "age_fix_v1"):  # views/day were 0 because upload dates weren't parsed: re-measure
+        n0 = conn.execute("""UPDATE artists a SET last_scanned=NULL WHERE last_scanned IS NOT NULL AND EXISTS
+                             (SELECT 1 FROM yt_metrics y WHERE y.artist_id=a.id AND coalesce(y.vpd_med,0)=0)""").rowcount
+        S.set_(conn, "age_fix_v1", True)
+        log_event(conn, "info", "scanner", f"re-measuring {n0} artists after date parsing fix")
     log_event(conn, "info", "scanner", "scanner started")
     n = 0
     while True:

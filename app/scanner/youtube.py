@@ -20,28 +20,39 @@ LAST_STATUS = {"reason": ""}
 
 
 def _num(text: str) -> int:
-    t = (text or "").lower().replace(",", "")
-    m = re.search(r"([\d.]+)\s*([kmb])?", t)
+    t = (text or "").lower().replace("\xa0", " ")
+    m = re.search(r"(\d[\d.,\s]*)\s*(k\b|tūkst|tsd|mil\b|m\b|mln|mio|b\b|mlrd|md)?", t)
     if not m:
         return 0
-    n = float(m.group(1))
-    return int(n * {"k": 1e3, "m": 1e6, "b": 1e9}.get(m.group(2) or "", 1))
+    num, suf = m.group(1).strip(), m.group(2)
+    mult = 1
+    if suf:
+        mult = 1e3 if suf in ("k", "tūkst", "tsd", "mil") else 1e9 if suf in ("b", "mlrd", "md") else 1e6
+        n = float(num.replace(" ", "").replace(",", "."))
+    else:
+        n = float(re.sub(r"[.,\s]", "", num) or 0)
+    return int(n * mult)
+
+
+AGE_UNITS = [  # (regex, days) - English plus the languages YouTube may answer in for an EU server IP
+    (r"sec|sek|segund|secon", 0.5), (r"min", 0.5),
+    (r"hour|hr\b|val\b|valand|std|stund|godz|heure|\bora|uur|hora", 0.5),
+    (r"week|sav|woche|semaine|settiman|tydz|semana|\bw\b", 7),
+    (r"month|mėn|men\.|monat|mois|\bmes|mies|maand|\bmo\b", 30),
+    (r"year|\bmet|\bm\.|jahr|\ban\b|\bans\b|ann|año|\blat|\brok|jaar", 365),
+    (r"day|dien|\bd\.|\bd\b|tag|jour|giorn|\bdag|dni|día|dias", 1),
+]
 
 
 def _age_days(text: str) -> float:
     t = (text or "").lower()
     m = re.search(r"(\d+)", t)
-    n = int(m.group(1)) if m else 1
-    if re.search(r"second|minute|hour", t):
-        return 0.5
-    if "day" in t:
-        return n
-    if "week" in t:
-        return n * 7
-    if "month" in t:
-        return n * 30
-    if "year" in t:
-        return n * 365
+    if not m:
+        return 9999
+    n = int(m.group(1))
+    for rx, d in AGE_UNITS:
+        if re.search(rx, t):
+            return 0.5 if d == 0.5 else n * d
     return 9999
 
 
@@ -63,14 +74,20 @@ def _walk(o, out):
             if l.get("contentType") == "LOCKUP_CONTENT_TYPE_VIDEO" and md:
                 views, age = 0, 9999
                 rows = (md.get("metadata") or {}).get("contentMetadataViewModel", {}).get("metadataRows", [])
+                nums = []
                 for r in rows:
                     for p in r.get("metadataParts", []):
-                        txt = (p.get("text") or {}).get("content", "")
+                        txt = (p.get("text") or {}).get("content", "") or ""
                         lab = p.get("accessibilityLabel", "") or txt
-                        if re.search(r"view", lab, re.I):
-                            views = _num(txt)
-                        elif re.search(r"ago", lab, re.I):
-                            age = _age_days(txt)
+                        if re.search(r"\d", txt) and len(txt) < 40:
+                            nums.append((txt, lab))
+                # first short numeric part = views, next = age (language independent)
+                for txt, lab in nums:
+                    if views == 0 and (re.search(r"view|peržiūr|aufruf|vue|visualizz|wyświetl|weergave|visualiza", lab, re.I)
+                                       or _age_days(lab) == 9999):
+                        views = _num(txt)
+                    elif age == 9999 and _age_days(lab) != 9999:
+                        age = _age_days(lab)
                 ch = ""
                 try:
                     ch = rows[0]["metadataParts"][0]["text"]["content"]
