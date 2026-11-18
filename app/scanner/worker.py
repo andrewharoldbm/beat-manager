@@ -114,6 +114,11 @@ def run():
                              (SELECT 1 FROM yt_metrics y WHERE y.artist_id=a.id AND coalesce(y.vpd_med,0)=0)""").rowcount
         S.set_(conn, "age_fix_v2", True)
         log_event(conn, "info", "scanner", f"re-measuring {n0} artists after date parsing fix")
+    if not S.get(conn, "sup_fix_v1"):  # competition was capped at ~20: re-measure those with full first pages
+        n1 = conn.execute("""UPDATE artists a SET last_scanned=NULL WHERE last_scanned IS NOT NULL AND EXISTS
+                             (SELECT 1 FROM yt_metrics y WHERE y.artist_id=a.id AND y.sup30 >= 15)""").rowcount
+        S.set_(conn, "sup_fix_v1", True)
+        log_event(conn, "info", "scanner", f"re-measuring {n1} artists to count competition past 20")
     log_event(conn, "info", "scanner", "scanner started")
     n = 0
     while True:
