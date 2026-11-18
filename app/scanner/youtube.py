@@ -109,7 +109,24 @@ def _walk(o, out):
             _walk(v, out)
 
 
-def search(query: str, sp: str | None = None, retries: int = 3):
+def _cont(o):
+    """Find the next-page continuation token in a search response."""
+    if isinstance(o, dict):
+        if "continuationCommand" in o and isinstance(o["continuationCommand"], dict):
+            return o["continuationCommand"].get("token")
+        for v in o.values():
+            t = _cont(v)
+            if t:
+                return t
+    elif isinstance(o, list):
+        for v in o:
+            t = _cont(v)
+            if t:
+                return t
+    return None
+
+
+def search(query: str, sp: str | None = None, retries: int = 3, pages: int = 1):
     url = "https://www.youtube.com/results?hl=en&gl=US&search_query=" + quote_plus(query)
     if sp:
         url += "&sp=" + sp
@@ -128,7 +145,23 @@ def search(query: str, sp: str | None = None, retries: int = 3):
                 return []
             LAST_STATUS["reason"] = ""
             out = []
-            _walk(json.loads(m.group(1)), out)
+            data = json.loads(m.group(1))
+            _walk(data, out)
+            if pages > 1:
+                ver = re.search(r'"INNERTUBE_CLIENT_VERSION":"([^"]+)"', r.text)
+                key = re.search(r'"INNERTUBE_API_KEY":"([^"]+)"', r.text)
+                tok = _cont(data)
+                for _ in range(pages - 1):
+                    if not (tok and ver):
+                        break
+                    time.sleep(1.5 + random.random() * 2)
+                    j = _client.post("https://www.youtube.com/youtubei/v1/search",
+                                     params={"prettyPrint": "false", **({"key": key.group(1)} if key else {})},
+                                     json={"context": {"client": {"clientName": "WEB", "clientVersion": ver.group(1),
+                                                                  "hl": "en", "gl": "US"}},
+                                           "continuation": tok}).json()
+                    _walk(j, out)
+                    tok = _cont(j)
             return out
         except Exception:
             time.sleep(5 + random.random() * 5)

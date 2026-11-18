@@ -225,7 +225,10 @@ def queue_skip(uid: int):
 def verdict(r):
     vpd, sup = r["vpd_med"] or 0, r["sup30"] or 0
     d = "High" if vpd >= 300 else "Medium" if vpd >= 40 else "Low"
-    c = "Low" if sup <= 8 else "Medium" if sup <= 15 else "High"
+    c = "Low" if sup <= 10 else "Medium" if sup <= 30 else "High"
+    s7 = r.get("sup7") or 0
+    # trend: last 7 days vs the 30-day weekly average
+    trend = "rising" if sup >= 4 and s7 * 4.3 > sup * 1.4 else "falling" if sup >= 8 and s7 * 4.3 < sup * 0.6 else ""
     if d == "Low":
         v, cls = "LOW DEMAND", "mut"
     elif c == "Low":
@@ -236,7 +239,7 @@ def verdict(r):
         v, cls = "CROWDED", "warn"
     else:
         v, cls = "POSSIBLE", ""
-    return {**r, "dlabel": d, "clabel": c, "verdict": v, "vclass": cls}
+    return {**r, "dlabel": d, "clabel": c, "verdict": v, "vclass": cls, "trend": trend}
 
 
 @app.get("/research", response_class=HTMLResponse)
@@ -248,7 +251,7 @@ def research(request: Request, q: str = "", maxsup: str = "", minvpd: str = "", 
         where.append("(a.name ILIKE %s OR EXISTS (SELECT 1 FROM artist_tags t WHERE t.artist_id=a.id AND t.tag ILIKE %s AND t.weight>=0.3))")
         args += [f"%{q}%", f"%{q}%"]
     if only == "niche":
-        where.append("m.sup30 <= 8 AND m.vpd_med >= 40")
+        where.append("m.sup30 <= 10 AND m.vpd_med >= 40")
     if maxsup.strip().isdigit():
         where.append("m.sup30 <= %s")
         args.append(int(maxsup))

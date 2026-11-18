@@ -128,6 +128,10 @@ def run():
         rel = youtube.search(q)
         time.sleep(random.uniform(1, 3))
         mon = youtube.search(q, youtube.FILTER_MONTH)
+        # first page full of this artist's type beats -> read more pages to count real competition (up to ~100)
+        nm = norm_key(a["name"])
+        if sum(1 for v in mon if nm in norm_key(v["t"])) >= 15:
+            mon = youtube.search(q, youtube.FILTER_MONTH, pages=5)
         if not rel and not mon:
             # possibly blocked: back off
             log_event(conn, "warn", "scanner", f"empty results for {a['name']} ({youtube.LAST_STATUS['reason'] or 'no matches'}), backing off")

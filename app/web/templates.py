@@ -120,7 +120,7 @@ RESEARCH = """{% extends 'base' %}{% block body %}
 <div><span class="pill mut">LOW DEMAND</span><div class="mut">Few people search for it yet. Watch, don't use.</div></div>
 </div>
 <p class="mut" style="margin:10px 0 0"><b>Searches</b> = how many views a typical type beat for this artist gets per day (shows real search demand).
-<b>Competition</b> = how many new type beats were uploaded in the last 30 days.</p></div>
+<b>Competition</b> = how many new type beats were uploaded in the last 30 days (Low ≤10, Medium ≤30, High 30+). The last-7-days number shows the trend: if the 7-day pace is much faster than the 30-day average, more producers are starting to use this artist.</p></div>
 <form class="row card" method="get">
 <input name="q" value="{{q}}" placeholder="genre or artist (detroit, flint, plugg, BabyTron…)" size=34>
 <select name="sort">{% for k,l in [('opp','Best niches first'),('vpd','Most searched'),('sup','Least competition'),('name','A–Z')] %}<option value="{{k}}" {{'selected' if sort==k}}>{{l}}</option>{% endfor %}</select>
@@ -130,7 +130,7 @@ RESEARCH = """{% extends 'base' %}{% block body %}
 {% for r in rows %}<tr><td><b>{{r.name}}</b></td>
 <td><span class="pill {{r.vclass}}">{{r.verdict}}</span></td>
 <td>{{r.dlabel}} <span class="mut">· {{'%.0f'|format(r.vpd_med or 0)}} views/day</span></td>
-<td>{{r.clabel}} <span class="mut">· {{r.sup30}}{{'+' if r.sup30>=20}} uploads/30d</span></td>
+<td>{{r.clabel}} <span class="mut">· {{r.sup30}}{{'+' if r.sup30>=95}} uploads/30d · {{r.sup7}} last 7d</span>{% if r.trend=='rising' %} <span class="pill warn">more producers jumping on</span>{% elif r.trend=='falling' %} <span class="pill ok">producers leaving</span>{% endif %}</td>
 <td class="mut">{{r.tags or ''}}</td><td class="mut">{{r.measured.strftime('%d %b') if r.measured}}</td></tr>
 {% else %}<tr><td colspan=6 class="mut">No results</td></tr>{% endfor %}</table>
 <h2>Current title formulas</h2><p class="mut">Edit in Settings.</p><pre class="card">{{formulas}}</pre>
