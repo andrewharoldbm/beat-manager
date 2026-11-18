@@ -9,6 +9,11 @@ m = re.search(r"var ytInitialData = (\{.*?\});</script>", r.text)
 parts = []
 def walk(o):
     if isinstance(o, dict):
+        if "videoRenderer" in o:
+            v = o["videoRenderer"]
+            parts.append({"pub": v.get("publishedTimeText"), "views": v.get("viewCountText", {}).get("simpleText"),
+                          "a11y": str((v.get("title") or {}).get("accessibility"))[:160],
+                          "keys": [k for k in v if "ime" in k or "ate" in k]})
         if "metadataParts" in o:
             parts.append([(p.get("text") or {}).get("content") for p in o["metadataParts"]][:3])
         for v in o.values(): walk(v)
@@ -16,6 +21,6 @@ def walk(o):
         for v in o: walk(v)
 if m:
     walk(json.loads(m.group(1)))
-print("status", r.status_code, "| raw parts sample:", parts[:6])
+print("status", r.status_code, "| raw parts sample:", json.dumps(parts[:2], ensure_ascii=False))
 res = y.search(q, "EgIIBA%3D%3D")
 print("parsed:", [(x.get("views"), x.get("age")) for x in (res or [])[:8]], "| reason:", getattr(y, "LAST_STATUS", ""))
