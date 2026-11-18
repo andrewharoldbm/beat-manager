@@ -244,8 +244,13 @@ def verdict(r):
 
 @app.get("/research", response_class=HTMLResponse)
 def research(request: Request, q: str = "", maxsup: str = "", minvpd: str = "", sort: str = "opp", only: str = ""):
-    order = {"opp": "(m.vpd_med / (m.sup30 + 2)) DESC", "vpd": "m.vpd_med DESC", "sup": "m.sup30 ASC, m.vpd_med DESC",
-             "name": "a.name"}.get(sort, "(m.vpd_med / (m.sup30 + 2)) DESC")
+    # "best niches": GOOD NICHE first, then POSSIBLE, BIG NAME, CROWDED, LOW DEMAND; inside each by demand/competition
+    rank = """CASE WHEN m.vpd_med < 40 THEN 5
+                   WHEN m.sup30 <= 10 THEN 1
+                   WHEN m.sup30 > 30 AND m.vpd_med >= 300 THEN 3
+                   WHEN m.sup30 > 30 THEN 4 ELSE 2 END"""
+    order = {"opp": f"{rank}, (m.vpd_med / (m.sup30 + 2)) DESC", "vpd": "m.vpd_med DESC",
+             "sup": "m.sup30 ASC, m.vpd_med DESC", "name": "a.name"}.get(sort, f"{rank}, (m.vpd_med / (m.sup30 + 2)) DESC")
     where, args = ["m.rel_n >= 5"], []
     if q:
         where.append("(a.name ILIKE %s OR EXISTS (SELECT 1 FROM artist_tags t WHERE t.artist_id=a.id AND t.tag ILIKE %s AND t.weight>=0.3))")
@@ -263,7 +268,7 @@ def research(request: Request, q: str = "", maxsup: str = "", minvpd: str = "", 
         pass
     rows = db().execute(f"""
         SELECT a.name, m.*, (SELECT string_agg(tag, ', ' ORDER BY weight DESC) FROM
-            (SELECT tag, max(weight) weight FROM artist_tags t WHERE t.artist_id=a.id GROUP BY tag ORDER BY 2 DESC LIMIT 4) x) tags
+            (SELECT tag, max(weight) weight FROM artist_tags t WHERE t.artist_id=a.id AND t.tag NOT LIKE '\\_%%' GROUP BY tag ORDER BY 2 DESC LIMIT 4) x) tags
         FROM artists a JOIN LATERAL (SELECT * FROM yt_metrics y WHERE y.artist_id=a.id ORDER BY measured DESC LIMIT 1) m ON true
         WHERE {' AND '.join(where)} ORDER BY {order} LIMIT 200""", args).fetchall()
     rows = [verdict(r) for r in rows]
