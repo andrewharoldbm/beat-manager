@@ -1,6 +1,8 @@
 """Set dashboard password + 2FA (run on the server):
   docker compose run --rm -v "$PWD/deploy:/srv/deploy" web python deploy/setup_dashboard.py
 """
+import sys
+sys.path.insert(0, "/srv")
 import getpass
 import pyotp
 import qrcode

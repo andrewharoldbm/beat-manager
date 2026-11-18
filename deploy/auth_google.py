@@ -5,6 +5,8 @@
 2. The browser then shows an error page at "localhost" - that's expected.
 3. Copy the FULL address from the browser bar and paste it here.
 """
+import sys
+sys.path.insert(0, "/srv")
 import os
 import sys
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"

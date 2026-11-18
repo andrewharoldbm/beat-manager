@@ -2,6 +2,8 @@
   docker compose run --rm -it bot python deploy/setup_telegram.py   (writes to /tmp/tg.env)
 Asks for bot token and a PIN, detects your chat id when you send /start to the bot.
 """
+import sys
+sys.path.insert(0, "/srv")
 import getpass
 import hashlib
 import time
