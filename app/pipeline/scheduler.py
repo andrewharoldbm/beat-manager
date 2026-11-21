@@ -11,6 +11,7 @@ Everything stops while KILL is active. Uploading is OFF by default until the own
 """
 import datetime as dt
 import os
+import sys
 import time
 import traceback
 import httpx
@@ -167,6 +168,16 @@ def run():
     ensure_schema(conn)
     log_event(conn, "info", "scheduler", "scheduler started")
     last_cov = 0
+    try:
+        from app.common import settings as S
+        if not S.get(conn, "thumb_study_v1"):  # one-off thumbnail study, runs in the background
+            S.set_(conn, "thumb_study_v1", True)
+            import subprocess
+            subprocess.Popen([sys.executable, "-m", "app.research.thumb_study"],
+                             stdout=open("/data/visuals/thumb_study.log", "w"), stderr=subprocess.STDOUT)
+            log_event(conn, "info", "study", "thumbnail study started")
+    except Exception:
+        log_event(conn, "warn", "study", traceback.format_exc()[-300:])
     while True:
         if time.time() - last_cov > 6 * 3600:
             last_cov = time.time()

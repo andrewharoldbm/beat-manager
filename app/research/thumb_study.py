@@ -5,7 +5,7 @@ Collects type beat videos for top artists of each niche, measures each thumbnail
 the best 20% vs the worst 20% by views/day *relative to that artist* (so big artists
 don't dominate). Writes a text report + contact sheets to /data/visuals/study/ (shown at /study).
 
-Run:  docker compose run --rm -e PYTHONPATH=/srv -v "$PWD/deploy:/srv/deploy" scheduler python deploy/thumb_study.py
+Runs once automatically from the scheduler (flag thumb_study_v1); manual: docker compose exec scheduler python -m app.research.thumb_study
 """
 import sys
 sys.path.insert(0, "/srv")
@@ -153,3 +153,9 @@ if __name__ == "__main__":
     print(f"collected {len(rows)} thumbnails", flush=True)
     report(rows)
     print("Done. Open the dashboard -> /study", flush=True)
+    try:
+        httpx.post(f"https://api.telegram.org/bot{os.environ['TELEGRAM_BOT_TOKEN']}/sendMessage",
+                   json={"chat_id": os.environ["OWNER_CHAT_ID"],
+                         "text": f"Thumbnail study finished: {len(rows)} thumbnails analysed. Open the dashboard page /study"})
+    except Exception:
+        pass
