@@ -16,13 +16,38 @@ input,select,textarea,button{background:#0b0c0e;color:var(--text);border:1px sol
 button{background:var(--acc);color:#111;border:0;font-weight:600;cursor:pointer}button.sec{background:var(--card);color:var(--text);border:1px solid var(--line)}
 form.inline{display:inline}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.pill{display:inline-block;padding:2px 8px;border-radius:99px;background:#22252a;font-size:12px}
 textarea{width:100%;min-height:220px;font-family:ui-monospace,Menlo,monospace;font-size:12px}
-.drop{border:2px dashed var(--line);border-radius:12px;padding:30px;text-align:center;color:var(--mut)}
+summary{cursor:pointer}.drop{border:2px dashed var(--line);border-radius:12px;padding:30px;text-align:center;color:var(--mut)}
+.side{position:fixed;left:0;top:0;bottom:0;width:84px;background:#0b0c0e;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 0;z-index:3}
+.side .brand{font-weight:800;color:var(--acc);margin-bottom:12px}
+.side a{display:flex;flex-direction:column;align-items:center;gap:3px;width:70px;padding:9px 0;border-radius:12px;text-decoration:none;color:var(--mut);font-size:11px}
+.side a.on,.side a:hover{background:var(--card);color:var(--acc)}
+.side svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.side .out{margin-top:auto}.side .out button{width:44px;padding:6px}
+.subs{position:sticky;top:0;z-index:2;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 16px 10px 100px;display:flex;gap:6px;flex-wrap:wrap}
+.subs a{padding:6px 12px;border-radius:99px;text-decoration:none;color:var(--mut);background:var(--card)}.subs a.on{background:var(--acc);color:#111;font-weight:600}
+main.withnav{margin-left:84px}
+@media(max-width:700px){.side{top:auto;width:100%;height:64px;flex-direction:row;justify-content:space-around;padding:0;border-right:0;border-top:1px solid var(--line)}
+.side .brand,.side .out{display:none}.side a{width:auto;padding:6px 10px}main.withnav{margin-left:0;padding-bottom:90px}.grid{grid-template-columns:1fr 1fr}.subs{padding-left:16px}}
 </style></head><body>
-{% if nav %}<nav><span class="brand">BEAT MANAGER</span>
-{% for href,label in [('/','Overview'),('/beats','Beats'),('/queue','Calendar'),('/research','Research'),('/covers','Covers'),('/emails','Emails'),('/contacts','Contacts'),('/events','Log'),('/settings','Settings')] %}
-<a href="{{href}}" class="{{'on' if active==href}}">{{label}}</a>{% endfor %}
-<form method="post" action="/logout" class="inline" style="margin-left:auto"><button class="sec">Log out</button></form></nav>{% endif %}
-<main>{% block body %}{% endblock %}</main></body></html>"""
+{% set ICONS = {
+ 'home':'<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+ 'beats':'<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+ 'research':'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+ 'mail':'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 6l-10 7L2 6"/>',
+ 'settings':'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 14.6H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3.1V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'} %}
+{% set SECTIONS = [
+ ('home','Home',[('/','Overview')]),
+ ('beats','Beats',[('/beats','Upload & list'),('/queue','Calendar'),('/covers','Covers')]),
+ ('research','Research',[('/research','Artists'),('/research/styles','Genres & moods'),('/study','Thumbnails')]),
+ ('mail','Emails',[('/emails','Tracker'),('/contacts','Contacts')]),
+ ('settings','Settings',[('/settings','Settings'),('/events','Log')])] %}
+{% if nav %}{% set ns = namespace(cur=SECTIONS[0]) %}{% for sec in SECTIONS %}{% for h,l in sec[2] %}{% if h==active %}{% set ns.cur = sec %}{% endif %}{% endfor %}{% endfor %}
+<aside class="side"><div class="brand">BM</div>
+{% for key,label,subs in SECTIONS %}<a href="{{subs[0][0]}}" class="{{'on' if ns.cur[0]==key}}" title="{{label}}"><svg viewBox="0 0 24 24">{{ICONS[key]|safe}}</svg><span>{{label}}</span></a>{% endfor %}
+<form method="post" action="/logout" class="out"><button class="sec" title="Log out">⏻</button></form></aside>
+{% if ns.cur[2]|length > 1 %}<div class="subs">{% for h,l in ns.cur[2] %}<a href="{{h}}" class="{{'on' if h==active}}">{{l}}</a>{% endfor %}</div>{% endif %}
+{% endif %}
+<main class="{{'withnav' if nav}}">{% block body %}{% endblock %}</main></body></html>"""
 
 LOGIN = """{% extends 'base' %}{% block body %}
 <div class="card" style="max-width:360px;margin:60px auto">
@@ -111,9 +136,9 @@ Edit a title to lock it.</p>
 {% endblock %}"""
 
 RESEARCH = """{% extends 'base' %}{% block body %}
-<h1>Research</h1><div class="row" style="gap:8px;margin-bottom:12px"><a class="pill {{'ok' if active=='/research'}}" href="/research">Artists</a><a class="pill {{'ok' if active=='/research/styles'}}" href="/research/styles">Genres &amp; moods</a><a class="pill" href="/study">Thumbnail study</a></div>
-<div class="card" style="margin-bottom:12px">
-<b>How to read this</b>
+<h1>Research</h1>
+<details class="card" style="margin-bottom:12px">
+<summary><b>ⓘ How to read this</b></summary>
 <div class="grid" style="margin-top:8px">
 <div><span class="pill ok">GOOD NICHE</span><div class="mut">People search for this artist, but few type beats are uploaded. Best for the B (niche) slot.</div></div>
 <div><span class="pill">BIG NAME</span><div class="mut">Lots of searches and lots of competition. Use as the A (traffic) name.</div></div>
@@ -121,7 +146,7 @@ RESEARCH = """{% extends 'base' %}{% block body %}
 <div><span class="pill mut">LOW DEMAND</span><div class="mut">Few people search for it yet. Watch, don't use.</div></div>
 </div>
 <p class="mut" style="margin:10px 0 0"><b>Searches</b> = how many views a typical type beat for this artist gets per day (shows real search demand).
-<b>Competition</b> = how many new type beats were uploaded in the last 30 days (Low ≤10, Medium ≤30, High 30+). The last-7-days number shows the trend: if the 7-day pace is much faster than the 30-day average, more producers are starting to use this artist.</p></div>
+<b>Competition</b> = how many new type beats were uploaded in the last 30 days (Low ≤10, Medium ≤30, High 30+). The last-7-days number shows the trend: if the 7-day pace is much faster than the 30-day average, more producers are starting to use this artist.</p></details>
 <form class="row card" method="get">
 <input name="q" value="{{q}}" placeholder="genre or artist (detroit, flint, plugg, BabyTron…)" size=34>
 <select name="sort">{% for k,l in [('opp','Best niches first'),('vpd','Most searched'),('sup','Least competition'),('name','A–Z')] %}<option value="{{k}}" {{'selected' if sort==k}}>{{l}}</option>{% endfor %}</select>
@@ -134,7 +159,7 @@ RESEARCH = """{% extends 'base' %}{% block body %}
 <td>{{r.clabel}} <span class="mut">· {{r.sup30}}{{'+' if r.sup30>=95}} uploads/30d · {{r.sup7}} last 7d</span>{% if r.trend=='rising' %} <span class="pill warn">more producers jumping on</span>{% elif r.trend=='falling' %} <span class="pill ok">producers leaving</span>{% endif %}</td>
 <td class="mut">{{r.tags or ''}}</td><td class="mut">{{r.measured.strftime('%d %b') if r.measured}}</td></tr>
 {% else %}<tr><td colspan=6 class="mut">No results</td></tr>{% endfor %}</table>
-<h2>Current title formulas</h2><p class="mut">Edit in Settings.</p><pre class="card">{{formulas}}</pre>
+<details style="margin-top:20px"><summary class="mut">Current title formulas (edit in Settings)</summary><pre class="card">{{formulas}}</pre></details>
 {% endblock %}"""
 
 CONTACTS = """{% extends 'base' %}{% block body %}
@@ -233,7 +258,7 @@ Each beat gets the least-used cover of its genre. Delete any you don't like - ne
 {% endblock %}"""
 
 STYLES = """{% extends 'base' %}{% block body %}
-<h1>Research</h1><div class="row" style="gap:8px;margin-bottom:12px"><a class="pill {{'ok' if active=='/research'}}" href="/research">Artists</a><a class="pill {{'ok' if active=='/research/styles'}}" href="/research/styles">Genres &amp; moods</a><a class="pill" href="/study">Thumbnail study</a></div>
+<h1>Research</h1>
 <p class="mut">Each row groups all measured artists with that tag. <b>Searches</b> and <b>Competition</b> are the typical (median) artist in the group. <b>Good niches</b> = how many artists in it are GOOD NICHE, with the best ones listed.</p>
 {% for title, rows in [('Genres & scenes', scenes), ('Moods & sound', moods)] %}
 <h2>{{title}}</h2>
@@ -244,5 +269,10 @@ STYLES = """{% extends 'base' %}{% block body %}
 {% endfor %}
 {% endblock %}"""
 
-ALL = {"base": BASE, "styles": STYLES, "covers": COVERS, "login": LOGIN, "overview": OVERVIEW, "beats": BEATS, "queue": QUEUE,
+STUDY = """{% extends 'base' %}{% block body %}<h1>Thumbnail study</h1>
+<pre class="card" style="white-space:pre-wrap">{{rep}}</pre>
+{% for f in imgs %}<h2>{{f[:-4].replace('_',' ')}}</h2><img src="/study/img/{{f}}" style="max-width:100%;border-radius:8px">{% endfor %}
+{% endblock %}"""
+
+ALL = {"base": BASE, "study": STUDY, "styles": STYLES, "covers": COVERS, "login": LOGIN, "overview": OVERVIEW, "beats": BEATS, "queue": QUEUE,
        "research": RESEARCH, "contacts": CONTACTS, "emails": EMAILS, "events": EVENTS, "settings": SETTINGS}

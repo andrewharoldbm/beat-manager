@@ -363,10 +363,7 @@ STUDY = "/data/visuals/study"
 def study(request: Request):
     rep = open(f"{STUDY}/report.txt").read() if os.path.exists(f"{STUDY}/report.txt") else "No study yet."
     imgs = sorted(f for f in os.listdir(STUDY) if f.endswith(".jpg")) if os.path.isdir(STUDY) else []
-    from html import escape
-    body = "".join(f'<h3>{escape(f[:-4].replace("_", " "))}</h3><img src="/study/img/{escape(f)}" style="max-width:100%;border-radius:8px">' for f in imgs)
-    return HTMLResponse(f"""<html><body style="background:#111;color:#ddd;font-family:sans-serif;padding:20px">
-<a href="/" style="color:#cf0">&larr; dashboard</a><h1>Thumbnail study</h1><pre>{escape(rep)}</pre>{body}</body></html>""")
+    return page("study", request, rep=rep, imgs=imgs)
 
 
 @app.get("/study/img/{name}")
