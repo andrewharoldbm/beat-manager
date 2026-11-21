@@ -332,6 +332,27 @@ def cover_delete(cid: int):
     return RedirectResponse(f"/covers?genre={r['genre'] if r else ''}", status_code=303)
 
 
+STUDY = "/data/visuals/study"
+
+
+@app.get("/study", response_class=HTMLResponse)
+def study(request: Request):
+    rep = open(f"{STUDY}/report.txt").read() if os.path.exists(f"{STUDY}/report.txt") else "No study yet."
+    imgs = sorted(f for f in os.listdir(STUDY) if f.endswith(".jpg")) if os.path.isdir(STUDY) else []
+    from html import escape
+    body = "".join(f'<h3>{escape(f[:-4].replace("_", " "))}</h3><img src="/study/img/{escape(f)}" style="max-width:100%;border-radius:8px">' for f in imgs)
+    return HTMLResponse(f"""<html><body style="background:#111;color:#ddd;font-family:sans-serif;padding:20px">
+<a href="/" style="color:#cf0">&larr; dashboard</a><h1>Thumbnail study</h1><pre>{escape(rep)}</pre>{body}</body></html>""")
+
+
+@app.get("/study/img/{name}")
+def study_img(name: str):
+    p = os.path.join(STUDY, os.path.basename(name))
+    if not name.endswith(".jpg") or not os.path.exists(p):
+        return Response(status_code=404)
+    return Response(open(p, "rb").read(), media_type="image/jpeg")
+
+
 CONTACT_COND = {"own": "coalesce(category,'own') = 'own'", "found": "category = 'artist'",
                 "producers": "category = 'producer'"}
 
