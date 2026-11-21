@@ -1,6 +1,9 @@
 """Beat Manager web dashboard (owner only, password + 2FA)."""
 import datetime as dt
 import json
+from app.common.genres import CANON
+MOOD_TAGS = {"dark", "sad", "hard", "chill", "dreamy", "piano", "guitar", "sample", "uptempo", "experimental",
+             "energetic", "aggressive", "melodic", "emotional", "happy", "ambient", "underground"}
 import os
 import re
 import time
@@ -294,9 +297,9 @@ def research(request: Request, q: str = "", maxsup: str = "", minvpd: str = "", 
         pass
     rows = db().execute(f"""
         SELECT a.name, m.*, (SELECT string_agg(tag, ', ' ORDER BY weight DESC) FROM
-            (SELECT tag, max(weight) weight FROM artist_tags t WHERE t.artist_id=a.id AND t.tag NOT LIKE '\\_%%' GROUP BY tag ORDER BY 2 DESC LIMIT 4) x) tags
+            (SELECT tag, max(weight) weight FROM artist_tags t WHERE t.artist_id=a.id AND t.tag = ANY(%s) GROUP BY tag ORDER BY 2 DESC LIMIT 4) x) tags
         FROM artists a JOIN LATERAL (SELECT * FROM yt_metrics y WHERE y.artist_id=a.id ORDER BY measured DESC LIMIT 1) m ON true
-        WHERE {' AND '.join(where)} ORDER BY {order} LIMIT 200""", args).fetchall()
+        WHERE {' AND '.join(where)} ORDER BY {order} LIMIT 200""", [list(CANON) + sorted(MOOD_TAGS)] + args).fetchall()
     rows = [verdict(r) for r in rows]
     return page("research", request, rows=rows, q=q, maxsup=maxsup, minvpd=minvpd, sort=sort, only=only,
                 formulas=json.dumps(meta.load_formulas(db()), indent=2))
@@ -332,8 +335,7 @@ def cover_delete(cid: int):
     return RedirectResponse(f"/covers?genre={r['genre'] if r else ''}", status_code=303)
 
 
-MOOD_TAGS = {"dark", "sad", "hard", "chill", "dreamy", "piano", "guitar", "sample", "uptempo", "experimental",
-             "energetic", "aggressive", "melodic", "emotional", "happy", "ambient", "underground"}
+
 
 
 @app.get("/research/styles", response_class=HTMLResponse)
@@ -342,7 +344,7 @@ def research_styles(request: Request):
     rows = c.execute("""
         WITH last AS (SELECT DISTINCT ON (artist_id) artist_id, vpd_med, sup30 FROM yt_metrics
                       WHERE vpd_med > 0 ORDER BY artist_id, measured DESC),
-             tg AS (SELECT artist_id, tag FROM artist_tags WHERE weight >= 0.3
+             tg AS (SELECT artist_id, tag FROM artist_tags WHERE weight >= 0.3 AND tag = ANY(%(canon)s)
                     AND artist_id IN (SELECT id FROM artists WHERE hidden IS NULL OR keep) AND tag NOT LIKE '\\_%%' GROUP BY 1, 2)
         SELECT tg.tag, count(*) n,
                percentile_cont(0.5) WITHIN GROUP (ORDER BY l.vpd_med) vpd,
@@ -351,7 +353,8 @@ def research_styles(request: Request):
                (SELECT string_agg(name, ', ') FROM (SELECT a.name FROM tg t2 JOIN last l2 ON l2.artist_id=t2.artist_id
                     JOIN artists a ON a.id=t2.artist_id WHERE t2.tag=tg.tag AND l2.sup30 <= 10 AND l2.vpd_med >= 40
                     ORDER BY l2.vpd_med DESC LIMIT 5) x) best
-        FROM tg JOIN last l ON l.artist_id=tg.artist_id GROUP BY tg.tag HAVING count(*) >= 3 ORDER BY 3 DESC""").fetchall()
+        FROM tg JOIN last l ON l.artist_id=tg.artist_id GROUP BY tg.tag HAVING count(*) >= 3 ORDER BY 3 DESC""",
+        {"canon": list(CANON) + sorted(MOOD_TAGS)}).fetchall()
     scenes = [r for r in rows if r["tag"] not in MOOD_TAGS]
     moods = [r for r in rows if r["tag"] in MOOD_TAGS]
     return page("styles", request, scenes=scenes, moods=moods)
