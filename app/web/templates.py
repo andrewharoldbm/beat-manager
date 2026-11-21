@@ -111,7 +111,7 @@ Edit a title to lock it.</p>
 {% endblock %}"""
 
 RESEARCH = """{% extends 'base' %}{% block body %}
-<h1>Research</h1>
+<h1>Research</h1><div class="row" style="gap:8px;margin-bottom:12px"><a class="pill {{'ok' if active=='/research'}}" href="/research">Artists</a><a class="pill {{'ok' if active=='/research/styles'}}" href="/research/styles">Genres &amp; moods</a><a class="pill" href="/study">Thumbnail study</a></div>
 <div class="card" style="margin-bottom:12px">
 <b>How to read this</b>
 <div class="grid" style="margin-top:8px">
@@ -232,5 +232,17 @@ Each beat gets the least-used cover of its genre. Delete any you don't like - ne
 </div>{% if not rows %}<p class="mut">No covers yet - the first ones arrive within a few hours.</p>{% endif %}
 {% endblock %}"""
 
-ALL = {"base": BASE, "covers": COVERS, "login": LOGIN, "overview": OVERVIEW, "beats": BEATS, "queue": QUEUE,
+STYLES = """{% extends 'base' %}{% block body %}
+<h1>Research</h1><div class="row" style="gap:8px;margin-bottom:12px"><a class="pill {{'ok' if active=='/research'}}" href="/research">Artists</a><a class="pill {{'ok' if active=='/research/styles'}}" href="/research/styles">Genres &amp; moods</a><a class="pill" href="/study">Thumbnail study</a></div>
+<p class="mut">Each row groups all measured artists with that tag. <b>Searches</b> and <b>Competition</b> are the typical (median) artist in the group. <b>Good niches</b> = how many artists in it are GOOD NICHE, with the best ones listed.</p>
+{% for title, rows in [('Genres & scenes', scenes), ('Moods & sound', moods)] %}
+<h2>{{title}}</h2>
+<table><tr><th>Tag</th><th>Artists</th><th>Searches (median)</th><th>Competition (median)</th><th>Good niches</th><th>Best niche artists</th></tr>
+{% for r in rows %}<tr><td><b><a href="/research?q={{r.tag}}">{{r.tag}}</a></b></td><td>{{r.n}}</td>
+<td>{{'%.0f'|format(r.vpd or 0)}} views/day</td><td>{{'%.0f'|format(r.sup or 0)}} uploads/30d</td><td>{{r.niches}}</td><td class="mut">{{r.best or ''}}</td></tr>
+{% else %}<tr><td colspan=6 class="mut">Not enough data yet</td></tr>{% endfor %}</table>
+{% endfor %}
+{% endblock %}"""
+
+ALL = {"base": BASE, "styles": STYLES, "covers": COVERS, "login": LOGIN, "overview": OVERVIEW, "beats": BEATS, "queue": QUEUE,
        "research": RESEARCH, "contacts": CONTACTS, "emails": EMAILS, "events": EVENTS, "settings": SETTINGS}

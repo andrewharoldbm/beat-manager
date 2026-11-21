@@ -332,6 +332,30 @@ def cover_delete(cid: int):
     return RedirectResponse(f"/covers?genre={r['genre'] if r else ''}", status_code=303)
 
 
+MOOD_TAGS = {"dark", "sad", "hard", "chill", "dreamy", "piano", "guitar", "sample", "uptempo", "experimental",
+             "energetic", "aggressive", "melodic", "emotional", "happy", "ambient", "underground"}
+
+
+@app.get("/research/styles", response_class=HTMLResponse)
+def research_styles(request: Request):
+    c = db()
+    rows = c.execute("""
+        WITH last AS (SELECT DISTINCT ON (artist_id) artist_id, vpd_med, sup30 FROM yt_metrics
+                      WHERE vpd_med > 0 ORDER BY artist_id, measured DESC),
+             tg AS (SELECT artist_id, tag FROM artist_tags WHERE weight >= 0.3 AND tag NOT LIKE '\\_%%' GROUP BY 1, 2)
+        SELECT tg.tag, count(*) n,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY l.vpd_med) vpd,
+               percentile_cont(0.5) WITHIN GROUP (ORDER BY l.sup30) sup,
+               count(*) FILTER (WHERE l.sup30 <= 10 AND l.vpd_med >= 40) niches,
+               (SELECT string_agg(name, ', ') FROM (SELECT a.name FROM tg t2 JOIN last l2 ON l2.artist_id=t2.artist_id
+                    JOIN artists a ON a.id=t2.artist_id WHERE t2.tag=tg.tag AND l2.sup30 <= 10 AND l2.vpd_med >= 40
+                    ORDER BY l2.vpd_med DESC LIMIT 5) x) best
+        FROM tg JOIN last l ON l.artist_id=tg.artist_id GROUP BY tg.tag HAVING count(*) >= 3 ORDER BY 3 DESC""").fetchall()
+    scenes = [r for r in rows if r["tag"] not in MOOD_TAGS]
+    moods = [r for r in rows if r["tag"] in MOOD_TAGS]
+    return page("styles", request, scenes=scenes, moods=moods)
+
+
 STUDY = "/data/visuals/study"
 
 
