@@ -91,7 +91,7 @@ def seed(conn):
 def next_artist(conn):
     return conn.execute(
         """SELECT id, name, priority FROM artists
-           WHERE (discovered_via <> 'yt_title' OR title_mentions >= 2)
+           WHERE hidden IS NULL AND (discovered_via <> 'yt_title' OR title_mentions >= 2)
              AND (last_scanned IS NULL OR last_scanned < now() - (CASE WHEN priority<=2 THEN interval '7 days' ELSE interval '30 days' END))
            ORDER BY priority, last_scanned NULLS FIRST, title_mentions DESC LIMIT 1""").fetchone()
 
@@ -119,6 +119,13 @@ def run():
                              (SELECT 1 FROM yt_metrics y WHERE y.artist_id=a.id AND y.sup30 >= 15)""").rowcount
         S.set_(conn, "sup_fix_v1", True)
         log_event(conn, "info", "scanner", f"re-measuring {n1} artists to count competition past 20")
+    if not S.get(conn, "generic_hide_v1"):  # hide artists whose name is just a common word (e.g. "VIBES")
+        from app.common.generic_names import is_generic
+        ids = [r["id"] for r in conn.execute("SELECT id, name FROM artists WHERE hidden IS NULL").fetchall() if is_generic(r["name"])]
+        if ids:
+            conn.execute("UPDATE artists SET hidden='generic word' WHERE id = ANY(%s)", (ids,))
+        S.set_(conn, "generic_hide_v1", True)
+        log_event(conn, "info", "scanner", f"hid {len(ids)} artists with generic names")
     log_event(conn, "info", "scanner", "scanner started")
     n = 0
     while True:
@@ -142,6 +149,10 @@ def run():
             log_event(conn, "warn", "scanner", f"empty results for {a['name']} ({youtube.LAST_STATUS['reason'] or 'no matches'}), backing off")
             time.sleep(600)
         m = measure(a["name"], rel, mon)
+        # huge demand but almost nobody uploads "<name> type beat" = the name is just a word people search
+        from app.common.generic_names import is_generic
+        if is_generic(a["name"]) or (m["vpd_med"] >= 800 and m["sup30"] <= 2):
+            conn.execute("UPDATE artists SET hidden='generic word', last_scanned=now() WHERE id=%s", (a["id"],))
         conn.execute("""INSERT INTO yt_metrics(artist_id, rel_n, sup7, sup30, vpd_med, vpd_top, med_month, top5_avg)
                         VALUES (%(id)s,%(rel_n)s,%(sup7)s,%(sup30)s,%(vpd_med)s,%(vpd_top)s,%(med_month)s,%(top5_avg)s)""",
                      {"id": a["id"], **m})

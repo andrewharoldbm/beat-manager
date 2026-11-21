@@ -138,7 +138,7 @@ def best_candidates(conn, genre, exclude, n=3):
     return conn.execute("""
         SELECT a.name, m.vpd_med, m.sup30 FROM artists a
         JOIN LATERAL (SELECT * FROM yt_metrics y WHERE y.artist_id=a.id ORDER BY measured DESC LIMIT 1) m ON true
-        WHERE m.rel_n >= 8 AND m.sup30 <= 8 AND m.vpd_med >= 30 AND NOT (lower(a.name) = ANY(%s))
+        WHERE a.hidden IS NULL AND NOT (m.vpd_med >= 800 AND m.sup30 <= 2) AND m.rel_n >= 8 AND m.sup30 <= 10 AND m.vpd_med >= 30 AND NOT (lower(a.name) = ANY(%s))
           AND EXISTS (SELECT 1 FROM artist_tags t WHERE t.artist_id=a.id AND t.tag=%s AND t.weight >= 0.4)
         ORDER BY m.vpd_med / (m.sup30 + 2) DESC LIMIT %s""", ([e.lower() for e in exclude], genre, n)).fetchall()
 
