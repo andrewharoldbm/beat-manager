@@ -150,6 +150,7 @@ RESEARCH = """{% extends 'base' %}{% block body %}
 <form class="row card" method="get">
 <input name="q" value="{{q}}" placeholder="genre or artist (detroit, flint, plugg, BabyTron…)" size=34>
 <select name="sort">{% for k,l in [('opp','Best niches first'),('vpd','Most searched'),('sup','Least competition'),('name','A–Z')] %}<option value="{{k}}" {{'selected' if sort==k}}>{{l}}</option>{% endfor %}</select>
+<select name="scope"><option value="mine" {{'selected' if scope=='mine'}}>My genres ({{mine|join(', ')}})</option><option value="all" {{'selected' if scope=='all'}}>All genres</option></select>
 <label class="mut"><input type="checkbox" name="only" value="niche" {{'checked' if only=='niche'}}> only good niches</label>
 <button>Search</button></form>
 <table><tr><th>Artist</th><th>Verdict</th><th>Searches</th><th>Competition</th><th>Genres</th><th>Updated</th></tr>
@@ -211,6 +212,7 @@ SETTINGS = """{% extends 'base' %}{% block body %}
 <label><input type="checkbox" name="email_send_found" {{'checked' if s.email_send_found}}> Send to contacts found by the system (verified only)</label>
 <label>Beats per email pack <input name="email_pack_size" value="{{s.email_pack_size}}" size=3></label>
 <label>Emails per day target (starts at 30, +15/day warm-up) <input name="email_daily_limit" value="{{s.email_daily_limit}}" size=4></label>
+<label>My genres - Research shows artists from these by default (comma separated)<input name="my_genres" value="{{my_genres}}"></label>
 <label>Email subjects (one per line, picked at random)<textarea name="email_subjects" style="min-height:90px">{{subj}}</textarea></label>
 <label>Email text<textarea name="email_body" style="min-height:60px">{{body}}</textarea></label>
 <label>Signature + disclaimer<textarea name="email_signature" style="min-height:110px">{{sig}}</textarea></label>

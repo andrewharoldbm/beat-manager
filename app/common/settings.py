@@ -19,6 +19,7 @@ DEFAULTS = {
     "email_daily_limit": 360,   # target after warm-up (~2500/week)
     "autopilot_hours": 72,
     "artist_bpm": None,
+    "my_genres": ["detroit", "flint", "scam"],   # Research shows these by default
     "covers_auto": False,   # auto public-domain covers (owner turned off)
     # drafts - to be reviewed with the owner before emails are switched on
     "email_subjects": ["fresh stuff", "fresh beats"],

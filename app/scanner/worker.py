@@ -119,12 +119,12 @@ def run():
                              (SELECT 1 FROM yt_metrics y WHERE y.artist_id=a.id AND y.sup30 >= 15)""").rowcount
         S.set_(conn, "sup_fix_v1", True)
         log_event(conn, "info", "scanner", f"re-measuring {n1} artists to count competition past 20")
-    if not S.get(conn, "generic_hide_v1"):  # hide artists whose name is just a common word (e.g. "VIBES")
-        from app.common.generic_names import is_generic
+    if not S.get(conn, "generic_hide_v2"):  # hide tag-like / word-like names (e.g. "VIBES", "90s Old School Boom Bap")
+        from app.common.generic_names import is_junk as is_generic
         ids = [r["id"] for r in conn.execute("SELECT id, name FROM artists WHERE hidden IS NULL AND NOT keep").fetchall() if is_generic(r["name"])]
         if ids:
             conn.execute("UPDATE artists SET hidden='generic word' WHERE id = ANY(%s)", (ids,))
-        S.set_(conn, "generic_hide_v1", True)
+        S.set_(conn, "generic_hide_v2", True)
         log_event(conn, "info", "scanner", f"hid {len(ids)} artists with generic names")
     log_event(conn, "info", "scanner", "scanner started")
     n = 0
@@ -150,7 +150,7 @@ def run():
             time.sleep(600)
         m = measure(a["name"], rel, mon)
         # huge demand but almost nobody uploads "<name> type beat" = the name is just a word people search
-        from app.common.generic_names import is_generic
+        from app.common.generic_names import is_junk as is_generic
         if not a.get("keep") and (is_generic(a["name"]) or (m["vpd_med"] >= 800 and m["sup30"] <= 2)):
             why = "generic word" if is_generic(a["name"]) else "suspicious numbers"
             conn.execute("UPDATE artists SET hidden=%s WHERE id=%s", (why, a["id"]))

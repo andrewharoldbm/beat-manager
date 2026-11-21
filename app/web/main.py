@@ -272,7 +272,8 @@ def verdict(r):
 
 
 @app.get("/research", response_class=HTMLResponse)
-def research(request: Request, q: str = "", maxsup: str = "", minvpd: str = "", sort: str = "opp", only: str = ""):
+def research(request: Request, q: str = "", maxsup: str = "", minvpd: str = "", sort: str = "opp", only: str = "",
+             scope: str = "mine"):
     # "best niches": GOOD NICHE first, then POSSIBLE, BIG NAME, CROWDED, LOW DEMAND; inside each by demand/competition
     rank = """CASE WHEN m.vpd_med < 40 THEN 5
                    WHEN m.sup30 <= 10 THEN 1
@@ -286,6 +287,11 @@ def research(request: Request, q: str = "", maxsup: str = "", minvpd: str = "", 
         args += [f"%{q}%", f"%{q}%"]
     if only == "niche":
         where.append("m.sup30 <= 10 AND m.vpd_med >= 40")
+    from app.common.generic_names import is_junk
+    mine = S.get(db(), "my_genres") or []
+    if scope == "mine" and mine and not q:
+        where.append("EXISTS (SELECT 1 FROM artist_tags t WHERE t.artist_id=a.id AND t.tag = ANY(%s) AND t.weight >= 0.3)")
+        args.append(mine)
     if maxsup.strip().isdigit():
         where.append("m.sup30 <= %s")
         args.append(int(maxsup))
@@ -296,12 +302,12 @@ def research(request: Request, q: str = "", maxsup: str = "", minvpd: str = "", 
     except ValueError:
         pass
     rows = db().execute(f"""
-        SELECT a.name, m.*, (SELECT string_agg(tag, ', ' ORDER BY weight DESC) FROM
+        SELECT a.name, a.keep, m.*, (SELECT string_agg(tag, ', ' ORDER BY weight DESC) FROM
             (SELECT tag, max(weight) weight FROM artist_tags t WHERE t.artist_id=a.id AND t.tag = ANY(%s) GROUP BY tag ORDER BY 2 DESC LIMIT 4) x) tags
         FROM artists a JOIN LATERAL (SELECT * FROM yt_metrics y WHERE y.artist_id=a.id ORDER BY measured DESC LIMIT 1) m ON true
         WHERE {' AND '.join(where)} ORDER BY {order} LIMIT 200""", [list(CANON) + sorted(MOOD_TAGS)] + args).fetchall()
-    rows = [verdict(r) for r in rows]
-    return page("research", request, rows=rows, q=q, maxsup=maxsup, minvpd=minvpd, sort=sort, only=only,
+    rows = [verdict(r) for r in rows if r.get("keep") or not is_junk(r["name"])]
+    return page("research", request, rows=rows, q=q, maxsup=maxsup, minvpd=minvpd, sort=sort, only=only, scope=scope, mine=mine,
                 formulas=json.dumps(meta.load_formulas(db()), indent=2))
 
 
@@ -484,7 +490,7 @@ def settings_page(request: Request, saved: int = 0, err: str = ""):
     s = {k: S.get(c, k) for k in SETTING_KEYS}
     return page("settings", request, s=s, saved=saved, err=err, formulas=json.dumps(meta.load_formulas(c), indent=2),
                 artist_bpm=json.dumps(S.get(c, "artist_bpm") or meta.DEFAULT_ARTIST_BPM, indent=2),
-                subj="\n".join(S.get(c, "email_subjects")), body=S.get(c, "email_body"), sig=S.get(c, "email_signature"))
+                my_genres=", ".join(S.get(c, "my_genres") or []), subj="\n".join(S.get(c, "email_subjects")), body=S.get(c, "email_body"), sig=S.get(c, "email_signature"))
 
 
 @app.post("/settings")
@@ -502,6 +508,9 @@ async def settings_save(request: Request):
     except Exception:
         return RedirectResponse("/settings?err=Artist+BPM+JSON+is+invalid", status_code=303)
     S.set_(c, "artist_bpm", abpm)
+    mg = [g.strip().lower() for g in (f.get("my_genres") or "").split(",") if g.strip()]
+    if mg:
+        S.set_(c, "my_genres", mg)
     lines = [l.strip()[:120] for l in (f.get("email_subjects") or "").splitlines() if l.strip()]
     if lines:
         S.set_(c, "email_subjects", lines)

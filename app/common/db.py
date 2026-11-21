@@ -27,6 +27,9 @@ def upsert_artist(conn, name, via, priority=5, mentions_inc=0):
     key = norm_key(name)
     if len(key) < 3:
         return None
+    from app.common.generic_names import is_junk
+    if via != "seed" and is_junk(name):
+        return None
     row = conn.execute(
         """INSERT INTO artists(name, key, discovered_via, priority, title_mentions)
            VALUES (%s,%s,%s,%s,%s)
