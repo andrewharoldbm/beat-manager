@@ -277,7 +277,7 @@ def research(request: Request, q: str = "", maxsup: str = "", minvpd: str = "", 
                    WHEN m.sup30 > 30 THEN 4 ELSE 2 END"""
     order = {"opp": f"{rank}, (m.vpd_med / (m.sup30 + 2)) DESC", "vpd": "m.vpd_med DESC",
              "sup": "m.sup30 ASC, m.vpd_med DESC", "name": "a.name"}.get(sort, f"{rank}, (m.vpd_med / (m.sup30 + 2)) DESC")
-    where, args = ["m.rel_n >= 5", "a.hidden IS NULL", "NOT (m.vpd_med >= 800 AND m.sup30 <= 2)"], []
+    where, args = ["m.rel_n >= 5", "(a.keep OR (a.hidden IS NULL AND NOT (m.vpd_med >= 800 AND m.sup30 <= 2)))"], []
     if q:
         where.append("(a.name ILIKE %s OR EXISTS (SELECT 1 FROM artist_tags t WHERE t.artist_id=a.id AND t.tag ILIKE %s AND t.weight>=0.3))")
         args += [f"%{q}%", f"%{q}%"]
@@ -343,7 +343,7 @@ def research_styles(request: Request):
         WITH last AS (SELECT DISTINCT ON (artist_id) artist_id, vpd_med, sup30 FROM yt_metrics
                       WHERE vpd_med > 0 ORDER BY artist_id, measured DESC),
              tg AS (SELECT artist_id, tag FROM artist_tags WHERE weight >= 0.3
-                    AND artist_id IN (SELECT id FROM artists WHERE hidden IS NULL) AND tag NOT LIKE '\\_%%' GROUP BY 1, 2)
+                    AND artist_id IN (SELECT id FROM artists WHERE hidden IS NULL OR keep) AND tag NOT LIKE '\\_%%' GROUP BY 1, 2)
         SELECT tg.tag, count(*) n,
                percentile_cont(0.5) WITHIN GROUP (ORDER BY l.vpd_med) vpd,
                percentile_cont(0.5) WITHIN GROUP (ORDER BY l.sup30) sup,
@@ -355,6 +355,23 @@ def research_styles(request: Request):
     scenes = [r for r in rows if r["tag"] not in MOOD_TAGS]
     moods = [r for r in rows if r["tag"] in MOOD_TAGS]
     return page("styles", request, scenes=scenes, moods=moods)
+
+
+@app.get("/research/hidden", response_class=HTMLResponse)
+def research_hidden(request: Request):
+    rows = db().execute("""
+        SELECT a.id, a.name, coalesce(a.hidden, 'suspicious numbers') why, m.vpd_med, m.sup30 FROM artists a
+        JOIN LATERAL (SELECT * FROM yt_metrics y WHERE y.artist_id=a.id ORDER BY measured DESC LIMIT 1) m ON true
+        WHERE NOT a.keep AND (a.hidden IS NOT NULL OR (m.vpd_med >= 800 AND m.sup30 <= 2))
+        ORDER BY m.vpd_med DESC NULLS LAST LIMIT 500""").fetchall()
+    return page("hidden", request, rows=rows)
+
+
+@app.post("/research/keep/{aid}")
+def research_keep(aid: int):
+    c = db()
+    c.execute("UPDATE artists SET keep=true, hidden=NULL, last_scanned=NULL WHERE id=%s", (aid,))
+    return RedirectResponse("/research/hidden", status_code=303)
 
 
 STUDY = "/data/visuals/study"

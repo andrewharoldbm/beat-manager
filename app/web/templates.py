@@ -38,7 +38,7 @@ main.withnav{margin-left:84px}
 {% set SECTIONS = [
  ('home','Home',[('/','Overview')]),
  ('beats','Beats',[('/beats','Upload & list'),('/queue','Calendar'),('/covers','Covers')]),
- ('research','Research',[('/research','Artists'),('/research/styles','Genres & moods'),('/study','Thumbnails')]),
+ ('research','Research',[('/research','Artists'),('/research/styles','Genres & moods'),('/research/hidden','Hidden'),('/study','Thumbnails')]),
  ('mail','Emails',[('/emails','Tracker'),('/contacts','Contacts')]),
  ('settings','Settings',[('/settings','Settings'),('/events','Log')])] %}
 {% if nav %}{% set ns = namespace(cur=SECTIONS[0]) %}{% for sec in SECTIONS %}{% for h,l in sec[2] %}{% if h==active %}{% set ns.cur = sec %}{% endif %}{% endfor %}{% endfor %}
@@ -274,5 +274,14 @@ STUDY = """{% extends 'base' %}{% block body %}<h1>Thumbnail study</h1>
 {% for f in imgs %}<h2>{{f[:-4].replace('_',' ')}}</h2><img src="/study/img/{{f}}" style="max-width:100%;border-radius:8px">{% endfor %}
 {% endblock %}"""
 
-ALL = {"base": BASE, "study": STUDY, "styles": STYLES, "covers": COVERS, "login": LOGIN, "overview": OVERVIEW, "beats": BEATS, "queue": QUEUE,
+HIDDEN = """{% extends 'base' %}{% block body %}<h1>Hidden artists</h1>
+<p class="mut">Hidden from research and titles because the name is an everyday word (e.g. "VIBES") or the numbers make no sense
+(huge searches but almost no "type beat" uploads). If one of them is a real artist you want, press <b>Real artist</b> - it is
+re-measured and never hidden again.</p>
+<table><tr><th>Name</th><th>Why</th><th>Searches</th><th>Uploads/30d</th><th></th></tr>
+{% for r in rows %}<tr><td><b>{{r.name}}</b></td><td class="mut">{{r.why}}</td><td>{{'%.0f'|format(r.vpd_med or 0)}}/day</td><td>{{r.sup30}}</td>
+<td><form method="post" action="/research/keep/{{r.id}}"><button class="sec">Real artist</button></form></td></tr>
+{% else %}<tr><td colspan=5 class="mut">Nothing hidden</td></tr>{% endfor %}</table>{% endblock %}"""
+
+ALL = {"base": BASE, "hidden": HIDDEN, "study": STUDY, "styles": STYLES, "covers": COVERS, "login": LOGIN, "overview": OVERVIEW, "beats": BEATS, "queue": QUEUE,
        "research": RESEARCH, "contacts": CONTACTS, "emails": EMAILS, "events": EVENTS, "settings": SETTINGS}
