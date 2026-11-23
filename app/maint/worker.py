@@ -47,6 +47,41 @@ def tag_lastfm(conn, limit=60):
         time.sleep(0.3)
 
 
+VERIFY_MIN_LISTENERS = 300
+
+
+def verify_artists(conn, limit=150):
+    """Keep only real artists: must exist on Last.fm under (almost) the same name with some listeners,
+    must not be '<known artist> + words' and must not be tag-like. Seeds and 'Real artist' overrides are kept."""
+    from app.common.db import norm_key
+    from app.common.generic_names import is_junk, contains_other
+    known = {r["key"] for r in conn.execute("""SELECT a.key FROM artists a JOIN LATERAL (SELECT vpd_med FROM yt_metrics y
+              WHERE y.artist_id=a.id ORDER BY measured DESC LIMIT 1) m ON true
+              WHERE m.vpd_med >= 150 AND (a.verified OR a.discovered_via='seed')""").fetchall()}
+    rows = conn.execute("""SELECT id, name, key, discovered_via, keep FROM artists WHERE verified IS NULL
+                           ORDER BY priority, id LIMIT %s""", (limit,)).fetchall()
+    for r in rows:
+        seed = r["discovered_via"] == "seed" or r["keep"]
+        ok, why = True, None
+        if is_junk(r["name"]):
+            ok, why = False, "not a real artist"
+        elif contains_other(r["name"], known - {r["key"]}):
+            ok, why = False, "another artist's name + words"
+        else:
+            info = lastfm.info(r["name"])
+            time.sleep(0.25)
+            if not info or info["listeners"] < VERIFY_MIN_LISTENERS:
+                ok, why = False, "not found on Last.fm"
+            else:
+                conn.execute("UPDATE artists SET lastfm_listeners=%s WHERE id=%s", (info["listeners"], r["id"]))
+                if norm_key(info["name"]) != r["key"]:
+                    ok, why = False, f"Last.fm knows it as {info['name']}"
+        if seed:
+            ok = True
+        conn.execute("UPDATE artists SET verified=%s, hidden=CASE WHEN %s THEN hidden ELSE %s END WHERE id=%s",
+                     (ok, ok, why, r["id"]))
+
+
 def propagate(conn):
     """Each artist inherits 50% of the average tag weights of its Last.fm-similar neighbors."""
     conn.execute("DELETE FROM artist_tags WHERE source='neighbors'")
@@ -138,7 +173,7 @@ def best_candidates(conn, genre, exclude, n=3):
     return conn.execute("""
         SELECT a.name, m.vpd_med, m.sup30 FROM artists a
         JOIN LATERAL (SELECT * FROM yt_metrics y WHERE y.artist_id=a.id ORDER BY measured DESC LIMIT 1) m ON true
-        WHERE (a.keep OR (a.hidden IS NULL AND NOT (m.vpd_med >= 800 AND m.sup30 <= 2))) AND m.rel_n >= 8 AND m.sup30 <= 10 AND m.vpd_med >= 30 AND NOT (lower(a.name) = ANY(%s))
+        WHERE (a.keep OR (a.hidden IS NULL AND NOT (m.vpd_med >= 800 AND m.sup30 <= 2))) AND (a.keep OR a.verified OR a.discovered_via = 'seed') AND m.rel_n >= 8 AND m.sup30 <= 10 AND m.vpd_med >= 30 AND NOT (lower(a.name) = ANY(%s))
           AND EXISTS (SELECT 1 FROM artist_tags t WHERE t.artist_id=a.id AND t.tag=%s AND t.weight >= 0.4)
         ORDER BY m.vpd_med / (m.sup30 + 2) DESC LIMIT %s""", ([e.lower() for e in exclude], genre, n)).fetchall()
 
@@ -274,6 +309,7 @@ def run():
     last_prop = last_report = last_sec = last_stats = last_mail = None
     while True:
         try:
+            verify_artists(conn)
             tag_lastfm(conn)
             now = dt.datetime.now(dt.timezone.utc)
             if not last_prop or now - last_prop > dt.timedelta(hours=12):

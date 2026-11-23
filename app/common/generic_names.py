@@ -31,9 +31,21 @@ STRONG = ("hip hop", "boom bap", "boombap", "old school", "oldschool", "r&b", "t
           "instrumental", "lofi", "lo-fi", "indie")
 
 
+import re
+
+
+def contains_other(name: str, known_keys) -> bool:
+    """'Drake Iceman', 'old drake', 'AMBIENT FATTMACK': another known artist's name plus extra words."""
+    toks = [t for t in re.split(r"[^a-z0-9$!]+", (name or "").lower()) if t]
+    for i in range(len(toks)):
+        for j in range(i + 1, min(len(toks), i + 4) + 1):
+            if (j - i) < len(toks) and "".join(toks[i:j]) in known_keys:
+                return True
+    return False
+
+
 def is_junk(name: str) -> bool:
     """Tag-like or word-like 'artists' from Last.fm/YouTube (e.g. '90s Old School Boom Bap', 'you', '** Smooth')."""
-    import re
     raw = (name or "").strip()
     n = raw.lower()
     if not raw or not raw[0].isalnum():
@@ -41,6 +53,11 @@ def is_junk(name: str) -> bool:
     if is_generic(raw):
         return True
     if any(p in n for p in STRONG):
+        return True
+    if re.search(r"\b(ambient|sampled|instrumental|type|beat|beats|\d{4}s|\d0s)\b", n) and len(n.split()) > 1:
+        return True
+    # collabs / several names in one: "Drake & Central Cee", "A x B", "A, B", "feat"
+    if re.search(r"\s(&|x|feat\.?|ft\.?|and|vs\.?)\s|,|/|\+", n):
         return True
     toks = [t for t in re.split(r"[\s/,&+]+", n) if t]
     return all(t in STOP or t in GENRE_WORDS or t in WORDS or re.fullmatch(r"\d+s?", t) for t in toks)

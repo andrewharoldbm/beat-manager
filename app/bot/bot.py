@@ -13,6 +13,8 @@ import hashlib
 import httpx
 from app.common.db import connect, log_event, ensure_schema
 from app.common import producers as P
+from app.common.genres import CANON
+CANON_TAGS = list(CANON) + ['ambient', 'chill', 'dark', 'sad', 'hard', 'dreamy', 'melodic', 'emotional', 'energetic']
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 OWNER = int(os.environ.get("OWNER_CHAT_ID", "0") or 0)
@@ -184,33 +186,59 @@ def change_producers(conn, beat, names):
     send(f"OK, {beat['name'] or beat['original_name']} is now: prod. by {prods}\n({note})")
 
 
+REAL = "(a.keep OR a.verified OR a.discovered_via = 'seed')"
+LAST = """JOIN LATERAL (SELECT * FROM yt_metrics y WHERE y.artist_id=a.id ORDER BY measured DESC LIMIT 1) m ON true"""
+OK = f"m.rel_n >= 5 AND m.vpd_med >= 40 AND {REAL} AND (a.keep OR a.hidden IS NULL) AND NOT (m.vpd_med >= 800 AND m.sup30 <= 2)"
+
+
+def _line(i, r):
+    s7, s30 = r["sup7"] or 0, r["sup30"] or 0
+    trend = " ↑" if s30 >= 4 and s7 * 4.3 > s30 * 1.4 else ""
+    return f"{i}. {r['name']} - {r['vpd_med']:.0f} views/day | {s30} beats/30d ({s7} last 7d){trend}"
+
+
 def top_niches(conn, q, n=20):
-    """Top niches for a genre / mood / artist name: searched, but few type beats uploaded."""
+    """/top <genre>: biggest + best niche artists of that genre.
+    /top <artist>: artists that fit next to / instead of that artist, then the best underground niches among them."""
+    from app.common.db import norm_key
     from app.common.generic_names import is_junk
-    rows = conn.execute("""
-        SELECT a.name, m.vpd_med, m.sup30, m.sup7 FROM artists a
-        JOIN LATERAL (SELECT * FROM yt_metrics y WHERE y.artist_id=a.id ORDER BY measured DESC LIMIT 1) m ON true
-        WHERE m.rel_n >= 5 AND m.vpd_med >= 40 AND (a.keep OR a.hidden IS NULL)
-          AND NOT (m.vpd_med >= 800 AND m.sup30 <= 2)
-          AND (%s = '' OR a.name ILIKE %s OR EXISTS (SELECT 1 FROM artist_tags t WHERE t.artist_id=a.id
-               AND t.tag ILIKE %s AND t.weight >= 0.3))
-        ORDER BY m.vpd_med / (m.sup30 + 2) DESC LIMIT 200""", (q, f"%{q}%", f"%{q}%")).fetchall()
-    rows = [r for r in rows if not is_junk(r["name"])]
-    niches = [r for r in rows if r["sup30"] <= 10][:n]
-    other = [r for r in rows if r["sup30"] > 10][:max(0, 8 - len(niches) // 3)]
-
-    def line(i, r):
-        s7, s30 = r["sup7"] or 0, r["sup30"] or 0
-        trend = " ↑ more producers coming" if s30 >= 4 and s7 * 4.3 > s30 * 1.4 else ""
-        return f"{i}. {r['name']} - {r['vpd_med']:.0f} views/day | {s30} beats/30d, {s7} last 7d{trend}"
-
+    art = conn.execute(f"""SELECT a.* FROM artists a WHERE a.key=%s AND {REAL}""", (norm_key(q),)).fetchone() if q else None
+    if q and not art and q not in CANON_TAGS:  # "rio da yung" -> Rio Da Yung OG
+        art = conn.execute(f"""SELECT a.* FROM artists a {LAST} WHERE a.key LIKE %s AND {REAL}
+                               ORDER BY m.vpd_med DESC LIMIT 1""", (norm_key(q) + "%",)).fetchone()
+    if art:
+        rows = conn.execute(f"""
+            WITH rel AS (
+              SELECT b AS id, max(weight) w FROM artist_links WHERE a=%(id)s GROUP BY b
+              UNION ALL SELECT a AS id, max(weight) w FROM artist_links WHERE b=%(id)s GROUP BY a
+              UNION ALL SELECT t2.artist_id, sum(least(t1.weight, t2.weight)) * 0.5
+                        FROM artist_tags t1 JOIN artist_tags t2 ON t2.tag=t1.tag AND t2.artist_id<>t1.artist_id
+                        WHERE t1.artist_id=%(id)s AND t1.tag = ANY(%(canon)s) AND t1.weight >= 0.3 AND t2.weight >= 0.3
+                        GROUP BY t2.artist_id)
+            SELECT a.name, a.lastfm_listeners lis, m.vpd_med, m.sup30, m.sup7, sum(rel.w) fit FROM rel JOIN artists a ON a.id=rel.id {LAST}
+            WHERE {OK} AND a.id <> %(id)s GROUP BY a.name, a.lastfm_listeners, m.vpd_med, m.sup30, m.sup7
+            ORDER BY sum(rel.w) DESC LIMIT 300""", {"id": art["id"], "canon": CANON_TAGS}).fetchall()
+        rows = [r for r in rows if not is_junk(r["name"])]
+        fit = sorted(rows[:60], key=lambda r: -r["vpd_med"])[:n]
+        niche = sorted([r for r in rows if r["sup30"] <= 10 and (r["lis"] or 0) < 1_500_000], key=lambda r: -(r["vpd_med"] / (r["sup30"] + 2)))[:n]
+        head = f"{art['name']}: artists that fit with / instead of him"
+    else:
+        rows = conn.execute(f"""
+            SELECT a.name, a.lastfm_listeners lis, m.vpd_med, m.sup30, m.sup7 FROM artists a {LAST}
+            WHERE {OK} AND (%(q)s = '' OR EXISTS (SELECT 1 FROM artist_tags t WHERE t.artist_id=a.id
+                  AND t.tag = %(q)s AND t.weight >= 0.3))
+            ORDER BY m.vpd_med DESC LIMIT 400""", {"q": q}).fetchall()
+        rows = [r for r in rows if not is_junk(r["name"])]
+        fit = rows[:10]
+        niche = sorted([r for r in rows if r["sup30"] <= 10 and (r["lis"] or 0) < 1_500_000], key=lambda r: -(r["vpd_med"] / (r["sup30"] + 2)))[:n]
+        head = f"{q or 'all genres'}: biggest artists"
     if not rows:
-        return f"Nothing measured for '{q}' yet. Try later or another word (e.g. /top detroit)."
-    out = [f"TOP {len(niches)} NICHES - {q or 'all'}", "(searched, but few type beats uploaded)", ""]
-    out += [line(i, r) for i, r in enumerate(niches, 1)] or ["no good niches yet"]
-    if other:
-        out += ["", "Big names for the A slot (lots of searches, lots of competition):"]
-        out += [line(i, r) for i, r in enumerate(other, 1)]
+        return (f"Nothing measured for '{q}' yet. Use one artist name (e.g. /top rio da yung og) "
+                "or one genre (e.g. /top detroit, /top ambient).")
+    out = [head] + [_line(i, r) for i, r in enumerate(fit, 1)]
+    out += ["", f"TOP {len(niche)} UNDERGROUND NICHES (searched, few type beats):"]
+    out += [_line(i, r) for i, r in enumerate(niche, 1)] or ["none yet - the database is still growing"]
+    out += ["", "↑ = more producers jumping on this week"]
     return "\n".join(out)
 
 
