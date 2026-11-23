@@ -82,10 +82,22 @@ def title_tags(conn, artist, videos):
                          (artist["id"], g, round(w, 3)))
 
 
+# friend's niche: ambient / calm rap (Lucki, Drake moody side) - measured early, tagged 'ambient'
+AMBIENT = ["Lucki", "Drake", "PartyNextDoor", "6lack", "Bryson Tiller", "Brent Faiyaz", "Don Toliver", "Roy Woods",
+           "dvsn", "Majid Jordan", "Summrs", "Autumn!", "Kankan", "Nine Vicious", "Che", "Nettspend", "Fakemink",
+           "Joeyy", "2hollis", "Osamason", "Rylo Rodriguez", "Babyxsosa", "Lancey Foux", "Jaydes", "Hardrock",
+           "Yung Fazo", "Ken Carson", "Destroy Lonely", "Homixide Gang", "Kwengface"]
+
+
 def seed(conn):
     for prio, names in SEEDS.items():
         for n in names:
             upsert_artist(conn, n, "seed", priority=prio)
+    for n in AMBIENT:
+        aid = upsert_artist(conn, n, "seed", priority=2)
+        if aid:
+            conn.execute("""INSERT INTO artist_tags(artist_id, tag, weight, source) VALUES (%s,'ambient',0.6,'seed')
+                            ON CONFLICT DO NOTHING""", (aid,))
 
 
 def next_artist(conn):
