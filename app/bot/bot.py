@@ -282,6 +282,25 @@ def run():
                 waiting = conn.execute("SELECT count(*) n FROM beats WHERE status='analyzed'").fetchone()["n"]
                 lines = [f"{r['scheduled']:%m-%d %H:%M} UTC  {r['t']}" + (" (preliminary)" if r['status']=='scheduled' else "") for r in rows]
                 send("Upcoming uploads:\n" + ("\n".join(lines) or "none") + f"\nAnalyzed, waiting for YouTube to be enabled: {waiting}")
+            elif text.startswith("/top"):
+                q = text[4:].strip().lower()
+                rows = conn.execute("""
+                    SELECT a.name, m.vpd_med, m.sup30, m.sup7 FROM artists a
+                    JOIN LATERAL (SELECT * FROM yt_metrics y WHERE y.artist_id=a.id ORDER BY measured DESC LIMIT 1) m ON true
+                    WHERE m.rel_n >= 5 AND m.vpd_med >= 40 AND (a.keep OR a.hidden IS NULL)
+                      AND NOT (m.vpd_med >= 800 AND m.sup30 <= 2)
+                      AND (%s = '' OR a.name ILIKE %s OR EXISTS (SELECT 1 FROM artist_tags t WHERE t.artist_id=a.id
+                           AND t.tag ILIKE %s AND t.weight >= 0.3))
+                    ORDER BY (m.sup30 <= 10) DESC, m.vpd_med / (m.sup30 + 2) DESC LIMIT 15""",
+                    (q, f"%{q}%", f"%{q}%")).fetchall()
+                from app.common.generic_names import is_junk
+                lines = []
+                for r in rows:
+                    if is_junk(r["name"]):
+                        continue
+                    tag = "GOOD NICHE" if r["sup30"] <= 10 else "BIG NAME" if r["vpd_med"] >= 300 else "ok"
+                    lines.append(f"{r['name']} - {r['vpd_med']:.0f} views/day, {r['sup30']} uploads/30d ({r['sup7']} last 7d) - {tag}")
+                send(f"Top {q or 'all'}:\n" + ("\n".join(lines) or "nothing measured yet"))
             elif text == "/log":
                 rows = conn.execute("""SELECT at, level, kind, message FROM events WHERE level IN ('warn','alert')
                                        OR kind IN ('emails','producers') ORDER BY id DESC LIMIT 12""").fetchall()
@@ -294,7 +313,7 @@ def run():
                 S.set_(conn, "yt_enabled", text == "/resume")
                 send("YouTube uploading " + ("RESUMED." if text == "/resume" else "PAUSED. Beats keep being analyzed."))
             elif text == "/help":
-                send("Commands:\n/status - system state\n/queue - next uploads\n/review - beats to check\n/log - recent problems\n"
+                send("Commands:\n/status - system state\n/queue - next uploads\n/review - beats to check\n/log - recent problems\n/top <genre or name> - best artists, e.g. /top ambient\n"
                      "/pause, /resume - YouTube uploading\n/prod <beat name> @name / -@name - add or remove a producer (or just reply to the beat)\n/kill, /restore - emergency stop (PIN)\n"
                      "Send an mp3/wav with a caption like: #detroit @conkretus @rsd")
             elif text == "/kill":
