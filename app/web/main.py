@@ -366,6 +366,27 @@ def research_styles(request: Request):
     return page("styles", request, scenes=scenes, moods=moods)
 
 
+@app.get("/research/export")
+def research_export():
+    """All real, measured artists with stats and genres - for analysis outside the dashboard."""
+    import csv, io
+    rows = db().execute(f"""
+        SELECT a.name, a.lastfm_listeners, m.vpd_med, m.sup30, m.sup7, m.measured,
+               (SELECT string_agg(tag, ' ' ORDER BY weight DESC) FROM (SELECT tag, max(weight) weight FROM artist_tags t
+                 WHERE t.artist_id=a.id AND t.tag = ANY(%s) AND t.weight >= 0.3 GROUP BY tag) x) tags
+        FROM artists a JOIN LATERAL (SELECT * FROM yt_metrics y WHERE y.artist_id=a.id ORDER BY measured DESC LIMIT 1) m ON true
+        WHERE m.rel_n >= 5 AND (a.keep OR (a.hidden IS NULL AND (a.verified OR a.discovered_via='seed')))
+        ORDER BY m.vpd_med DESC""", [list(CANON) + sorted(MOOD_TAGS)]).fetchall()
+    b = io.StringIO()
+    w = csv.writer(b)
+    w.writerow(["artist", "lastfm_listeners", "views_per_day", "beats_30d", "beats_7d", "genres", "measured"])
+    for r in rows:
+        w.writerow([r["name"], r["lastfm_listeners"] or "", round(r["vpd_med"] or 0), r["sup30"], r["sup7"],
+                    r["tags"] or "", r["measured"].date() if r["measured"] else ""])
+    return Response(b.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": 'attachment; filename="artists.csv"'})
+
+
 @app.get("/research/hidden", response_class=HTMLResponse)
 def research_hidden(request: Request):
     rows = db().execute("""

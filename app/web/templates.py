@@ -151,6 +151,7 @@ RESEARCH = """{% extends 'base' %}{% block body %}
 <input name="q" value="{{q}}" placeholder="genre or artist (detroit, flint, plugg, BabyTron…)" size=34>
 <select name="sort">{% for k,l in [('opp','Best niches first'),('vpd','Most searched'),('sup','Least competition'),('name','A–Z')] %}<option value="{{k}}" {{'selected' if sort==k}}>{{l}}</option>{% endfor %}</select>
 <select name="scope"><option value="mine" {{'selected' if scope=='mine'}}>My genres ({{mine|join(', ')}})</option><option value="all" {{'selected' if scope=='all'}}>All genres</option></select>
+<a class="pill" href="/research/export">⬇ Download all (CSV)</a>
 <label class="mut"><input type="checkbox" name="only" value="niche" {{'checked' if only=='niche'}}> only good niches</label>
 <button>Search</button></form>
 <table><tr><th>Artist</th><th>Verdict</th><th>Searches</th><th>Competition</th><th>Genres</th><th>Updated</th></tr>
